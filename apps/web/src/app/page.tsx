@@ -6,6 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CopyButton from "@/components/ui/CopyButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
+import ModelDropdown from "@/components/ui/ModelDropdown";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -136,7 +137,7 @@ function buildSectionedChoices(models: readonly string[]): SelectOpt[] {
       const [, modelName = ""] = pm.split(":", 2);
       out.push({
         value: pm,
-        label: `${icon} ${modelName}`,
+        label: `${icon} ${prettifyModelName(modelName)}`
       });
     }
   }
@@ -878,10 +879,22 @@ export default function Page() {
                           />
                         </label>
 
-                        <select
+                        <ModelDropdown
+                          value={model}
+                          options={modelChoices}
+                          onChange={(v) => {
+                            // ignore header clicks if somehow passed
+                            if (v.startsWith("__header__:")) return;
+                            setModel(v);
+                          }}
+                          disabled={isStreaming}
+                        />
+
+                        {/* <select
+
                           className="rounded-lg border border-white/10 bg-[#262626] px-3 py-2 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-white/20"
                           value={model}
-                          onChange={(e) => setModel(e.target.value)}   // ✅ add this
+                          onChange={(e) => setModel(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault();
@@ -896,7 +909,7 @@ export default function Page() {
                               {opt.label}
                             </option>
                           ))}
-                        </select>
+                        </select> */}
 
                       </div>
 
