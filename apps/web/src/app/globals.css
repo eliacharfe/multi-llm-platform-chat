@@ -59,3 +59,80 @@ body {
 *:hover::-webkit-scrollbar-thumb {
   background-color: rgba(255, 255, 255, 0.18);
 }
+
+.token.keyword {
+  color: #cc99cd;
+}
+
+.token.function {
+  color: #f08d49;
+}
+
+.token.string {
+  color: #7ec699;
+}
+
+.token.comment {
+  color: #999;
+}
+
+.token.operator {
+  color: #67cdcc;
+}
+
+/* globals.css */
+.token.comment,
+.token.prolog,
+.token.doctype,
+.token.cdata {
+  color: #8292a2;
+}
+
+.token.punctuation {
+  color: #f8f8f2;
+}
+
+.token.property,
+.token.tag,
+.token.constant,
+.token.symbol,
+.token.deleted {
+  color: #f92672;
+}
+
+.token.boolean,
+.token.number {
+  color: #ae81ff;
+}
+
+.token.selector,
+.token.attr-name,
+.token.string,
+.token.char,
+.token.builtin,
+.token.inserted {
+  color: #a6e22e;
+}
+
+.token.operator,
+.token.entity,
+.token.url {
+  color: #f8f8f2;
+}
+
+.token.atrule,
+.token.attr-value,
+.token.keyword {
+  color: #66d9ef;
+}
+
+.token.function,
+.token.class-name {
+  color: #e6db74;
+}
+
+.token.regex,
+.token.important,
+.token.variable {
+  color: #fd971f;
+}

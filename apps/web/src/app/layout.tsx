@@ -3,6 +3,8 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "prismjs/themes/prism-tomorrow.css";
+import "@/lib/prism";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

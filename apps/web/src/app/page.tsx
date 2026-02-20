@@ -4,6 +4,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypePrism from "rehype-prism-plus";
+
 import CopyButton from "@/components/ui/CopyButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ModelDropdown from "@/components/ui/ModelDropdown";
@@ -870,7 +872,56 @@ export default function Page() {
                             {isUser ? (
                               <div className="max-w-[75%]">
                                 <div className="relative whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed bg-[#3a3a3a] text-gray-100">
-                                  {m.content}
+                                  {/* {m.content} */}
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    rehypePlugins={[rehypePrism]}
+                                    components={{
+                                      pre({ children }) {
+                                        const child = Array.isArray(children) ? children[0] : children;
+                                        const className = (child as any)?.props?.className || "";
+                                        const lang = (className.match(/language-(\w+)/)?.[1] || "").toLowerCase();
+
+                                        const raw =
+                                          (child as any)?.props?.children
+                                            ? childrenToText((child as any).props.children).replace(/\n$/, "")
+                                            : "";
+
+                                        return (
+                                          <div className="relative my-3">
+                                            <div className="absolute right-2 top-2 flex items-center gap-2 z-10">
+                                              {lang ? (
+                                                <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
+                                                  {lang}
+                                                </span>
+                                              ) : null}
+                                              <CopyButton text={raw} className="bg-black/30" title="Copy code" />
+                                            </div>
+
+                                            <pre className={`${className} bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto text-sm`}>
+                                              {children}
+                                            </pre>
+                                          </div>
+                                        );
+                                      },
+
+                                      code({ className, children, ...props }) {
+                                        const isBlock = /language-\w+/.test(className || "");
+                                        if (isBlock) return <code className={className} {...props}>{children}</code>;
+
+                                        return (
+                                          <code
+                                            className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
+                                            {...props}
+                                          >
+                                            {children}
+                                          </code>
+                                        );
+                                      },
+                                    }}
+                                  >
+                                    {m.content}
+                                  </ReactMarkdown>
                                 </div>
                                 <div className="mt-2 flex justify-end">
                                   <CopyButton text={m.content} />
