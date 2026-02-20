@@ -1,13 +1,28 @@
-
 // web/src/app/page.tsx
 "use client";
 
-import React, { useMemo, useRef, useState, useCallback } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CopyButton from "@/components/ui/CopyButton";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
+
+type ChatListItem = {
+  id: string;
+  title: string;
+  model: string;
+  updated_at: string;
+};
+
+type ChatDetail = {
+  id: string;
+  title: string;
+  model: string;
+  messages: Msg[];
+  created_at?: string;
+  updated_at?: string;
+};
 
 const MODEL_OPTIONS = [
   "openai:gpt-5-nano",
@@ -140,12 +155,43 @@ function Spinner() {
 function childrenToText(children: React.ReactNode): string {
   if (typeof children === "string") return children;
   if (Array.isArray(children)) return children.map(childrenToText).join("");
-  return children?.toString?.() ?? "";
+  return (children as any)?.toString?.() ?? "";
 }
 
-// =========================
-// Page
-// =========================
+function formatChatTime(iso: string) {
+  try {
+    const d = new Date(iso);
+    const now = new Date();
+    const sameDay =
+      d.getFullYear() === now.getFullYear() &&
+      d.getMonth() === now.getMonth() &&
+      d.getDate() === now.getDate();
+
+    if (sameDay) {
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      return `${hh}:${mm}`;
+    }
+
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
+      d.getDate()
+    ).padStart(2, "0")}`;
+  } catch {
+    return "";
+  }
+}
+
+// X-User-Id (required by your BE)
+function getUserId(): string {
+  if (typeof window === "undefined") return "dev-user";
+  const key = "mlc_x_user_id";
+  let v = window.localStorage.getItem(key);
+  if (!v) {
+    v = crypto.randomUUID();
+    window.localStorage.setItem(key, v);
+  }
+  return v;
+}
 
 export default function Page() {
   const DEFAULT_MODEL = "openai:gpt-5-mini";
@@ -154,6 +200,11 @@ export default function Page() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
+
+  const [chats, setChats] = useState<ChatListItem[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [chatSearch, setChatSearch] = useState("");
+  const [isSidebarLoading, setIsSidebarLoading] = useState(false);
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL!;
   const abortRef = useRef<AbortController | null>(null);
@@ -168,17 +219,100 @@ export default function Page() {
     [input, isStreaming]
   );
 
+  const filteredChats = useMemo(() => {
+    const q = chatSearch.trim().toLowerCase();
+    if (!q) return chats;
+    return chats.filter((c) => (c.title || "").toLowerCase().includes(q));
+  }, [chats, chatSearch]);
+
+  async function api<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(`${apiUrl}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        "X-User-Id": getUserId(),
+        ...(init?.headers ?? {}),
+      },
+    });
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
+    }
+    return (await res.json()) as T;
+  }
+
+  async function refreshChats() {
+    setIsSidebarLoading(true);
+    try {
+      const data = await api<{ chats: ChatListItem[] }>("/v1/chats", { method: "GET" });
+      setChats(data.chats || []);
+    } finally {
+      setIsSidebarLoading(false);
+    }
+  }
+
+  function newDraftChat() {
+    stop();
+
+    if (!activeChatId && messages.length === 0) return;
+
+    setActiveChatId(null);
+    setMessages([]);
+    autoScrollEnabledRef.current = true;
+    scrollToBottom(true);
+  }
+
+  async function openChat(chatId: string) {
+    if (!chatId) return;
+
+    stop();
+
+    setMessages([]);
+    setActiveChatId(chatId);
+
+    const detail = await api<any>(`/v1/chats/${chatId}`, { method: "GET" });
+
+    const chat = detail?.chat ?? detail; // ✅ supports both shapes
+
+    console.log("openChat detail:", detail);
+
+    setMessages(Array.isArray(chat?.messages) ? chat.messages : []);
+    if (chat?.model) setModel(chat.model);
+
+    autoScrollEnabledRef.current = true;
+    scrollToBottom(true);
+  }
+
+  async function ensureChatId(): Promise<string> {
+    if (activeChatId) return activeChatId;
+
+    const created = await api<{ chat_id: string }>("/v1/chats", {
+      method: "POST",
+      body: JSON.stringify({ model }),
+    });
+
+    setActiveChatId(created.chat_id);
+    await refreshChats();
+    return created.chat_id;
+  }
+
+  useEffect(() => {
+    refreshChats().catch(() => { });
+  }, []);
+
   async function send() {
     if (!canSend) return;
+
+    const chatId = await ensureChatId();
 
     const userMsg: Msg = { role: "user", content: input.trim() };
     const nextMessages = [...messages, userMsg];
 
     setMessages([...nextMessages, { role: "assistant", content: "" }]);
     autoScrollEnabledRef.current = true;
-    scrollToBottom(true); // force
+    scrollToBottom(true);
     setInput("");
-    autoScrollEnabledRef.current = true;
     isStreamingRef.current = true;
     setIsStreaming(true);
 
@@ -188,9 +322,13 @@ export default function Page() {
     try {
       const res = await fetch(`${apiUrl}/v1/chat/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "X-User-Id": getUserId(),
+        },
         signal: ac.signal,
         body: JSON.stringify({
+          chat_id: chatId,
           model,
           messages: nextMessages,
           temperature: getTemperature(model),
@@ -232,6 +370,9 @@ export default function Page() {
               abortRef.current = null;
               isStreamingRef.current = false;
               scrollToBottom(true);
+
+              // refresh sidebar order/title after each assistant message
+              refreshChats().catch(() => { });
               return;
             }
 
@@ -315,21 +456,69 @@ export default function Page() {
       <div className="flex h-full">
         {/* LEFT SIDEBAR */}
         <aside className="w-[280px] border-r border-white/10 bg-[#2b2b2b] p-4 flex flex-col gap-4">
-          <button className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left">
+          <button
+            className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left"
+            onClick={newDraftChat}
+          >
             + New Chat
           </button>
 
           <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 flex items-center gap-2">
             <input
               className="w-full bg-transparent outline-none text-sm placeholder:text-gray-400"
-              placeholder="Explain quantum me..."
+              placeholder="Search chats..."
+              value={chatSearch}
+              onChange={(e) => setChatSearch(e.target.value)}
             />
             <button
               className="opacity-70 hover:opacity-100 transition"
               title="Clear"
+              onClick={() => setChatSearch("")}
             >
               🗑️
             </button>
+          </div>
+
+          {/* Chats list (saved only) */}
+          <div className="flex-1 overflow-y-auto pr-1 -mr-1">
+            {isSidebarLoading && chats.length === 0 ? (
+              <div className="text-xs text-gray-400 px-2 py-2">Loading chats…</div>
+            ) : filteredChats.length === 0 ? (
+              <div className="text-xs text-gray-400 px-2 py-2">
+                No saved chats yet.
+              </div>
+            ) : (
+              <div className="flex flex-col gap-1">
+                {filteredChats.map((c) => {
+                  const active = c.id === activeChatId;
+                  return (
+                    <button
+                      key={c.id}
+                      onClick={() => openChat(c.id)}
+                      className={[
+                        "w-full text-left rounded-lg px-3 py-2 border transition",
+                        active
+                          ? "bg-white/10 border-white/15"
+                          : "bg-black/10 border-white/10 hover:bg-white/10 hover:border-white/15",
+                      ].join(" ")}
+                      title={c.title}
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-sm text-gray-100 truncate">
+                          {c.title || "New chat"}
+                        </div>
+                        <div className="text-[11px] text-gray-400 shrink-0">
+                          {formatChatTime(c.updated_at)}
+                        </div>
+                      </div>
+                      <div className="mt-1 text-[11px] text-gray-400 truncate">
+                        {c.model}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           <div className="mt-auto">
@@ -366,11 +555,9 @@ export default function Page() {
                         return (
                           <div
                             key={idx}
-                            className={`flex ${isUser ? "justify-end" : "justify-start"
-                              }`}
+                            className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                           >
                             {isUser ? (
-                              // ✅ USER = bubble + copy button
                               <div className="max-w-[75%]">
                                 <div className="relative whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed bg-[#3a3a3a] text-gray-100">
                                   {m.content}
@@ -380,10 +567,8 @@ export default function Page() {
                                 </div>
                               </div>
                             ) : (
-                              // ✅ ASSISTANT = plain + copy button
                               <div className="w-full max-w-3xl">
                                 <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
-                                  {/* ✅ loader row while waiting for first tokens */}
                                   {isStreaming &&
                                     idx === messages.length - 1 &&
                                     (m.content?.length ?? 0) === 0 && (
@@ -393,18 +578,14 @@ export default function Page() {
                                       </div>
                                     )}
 
-                                  {/* normal markdown */}
                                   {m.content?.length ? (
                                     <ReactMarkdown
                                       remarkPlugins={[remarkGfm]}
                                       components={{
                                         code({ className, children, ...props }) {
                                           const lang =
-                                            (className || "").match(/language-(\w+)/)?.[1] ||
-                                            "";
-
-                                          const isBlock =
-                                            /language-\w+/.test(className || "");
+                                            (className || "").match(/language-(\w+)/)?.[1] || "";
+                                          const isBlock = /language-\w+/.test(className || "");
                                           const raw = childrenToText(children).replace(/\n$/, "");
 
                                           if (isBlock) {
@@ -432,7 +613,6 @@ export default function Page() {
                                             );
                                           }
 
-                                          // inline code (optional: you can also copy inline, but usually not needed)
                                           return (
                                             <code
                                               className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
@@ -449,7 +629,6 @@ export default function Page() {
                                   ) : null}
                                 </div>
 
-                                {/* message-level copy button */}
                                 {isAssistant && (m.content?.length ?? 0) > 0 ? (
                                   <div className="mt-2 flex justify-start">
                                     <CopyButton text={m.content} />
@@ -494,7 +673,7 @@ export default function Page() {
                           type="file"
                           multiple
                           className="hidden"
-                          onChange={(e) => { }}
+                          onChange={() => { }}
                           disabled={isStreaming}
                         />
                       </label>
@@ -510,11 +689,7 @@ export default function Page() {
                         disabled={isStreaming}
                       >
                         {modelChoices.map((opt) => (
-                          <option
-                            key={opt.value}
-                            value={opt.value}
-                            disabled={opt.disabled}
-                          >
+                          <option key={opt.value} value={opt.value} disabled={opt.disabled}>
                             {opt.label}
                           </option>
                         ))}

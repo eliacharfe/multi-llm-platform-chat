@@ -1,12 +1,26 @@
-# # main.py
-import json
-import os
-from typing import Any, Dict, List, Literal, Optional, Tuple
+# main.py
+from pathlib import Path
 from dotenv import load_dotenv
+# load_dotenv()
+load_dotenv(dotenv_path=Path(__file__).resolve().with_name(".env"))
+import os
+print("DATABASE_URL =", os.getenv("DATABASE_URL"))
+import json
+from typing import Any, Dict, List, Literal, Optional, Tuple
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+
+import asyncio
+import time
+from datetime import datetime
+from fastapi import Header, HTTPException
+
+from sqlalchemy import select, desc
+from sqlalchemy.orm import selectinload
+
+from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
 
 from clients import (
     get_openai_compatible_client,
@@ -15,7 +29,7 @@ from clients import (
     openrouter_extra_headers,
 )
 
-load_dotenv()
+
 
 app = FastAPI()
 
@@ -77,6 +91,7 @@ class ChatMsg(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    chat_id: str
     model: str
     messages: List[ChatMsg]
     temperature: Optional[float] = None
@@ -226,29 +241,246 @@ def health():
     return {"ok": True}
 
 
+
+@app.on_event("startup")
+async def _startup():
+    await init_db()
+
+def require_user_id(x_user_id: str | None) -> str:
+    if not x_user_id:
+        raise HTTPException(status_code=401, detail="Missing X-User-Id")
+    return x_user_id.strip()
+
+
+class CreateChatRequest(BaseModel):
+    model: str
+
+class CreateChatResponse(BaseModel):
+    chat_id: str
+
+class ChatListItem(BaseModel):
+    id: str
+    title: str
+    model: str
+    updated_at: datetime
+
+class ChatListResponse(BaseModel):
+    chats: List[ChatListItem]
+
+class ChatWithMessagesResponse(BaseModel):
+    id: str
+    title: str
+    model: str
+    messages: List[ChatMsg]
+
+
+def derive_title_from_messages(msgs: List[ChatMsg]) -> str:
+    first_user = next((m.content.strip() for m in msgs if m.role == "user" and m.content.strip()), "")
+    if not first_user:
+        return "New Chat"
+    one_line = first_user.split("\n")[0].strip()
+    return (one_line[:42] + "…") if len(one_line) > 42 else one_line
+
+
+@app.post("/v1/chats", response_model=CreateChatResponse)
+async def create_chat(req: CreateChatRequest, x_user_id: str | None = Header(default=None)):
+    user_id = require_user_id(x_user_id)
+
+    if req.model not in MODEL_OPTIONS:
+        raise HTTPException(400, f"Unsupported model: {req.model}")
+
+    async with SessionLocal() as session:
+        chat = ChatRow(user_id=user_id, model=req.model, title="New Chat", updated_at=utcnow())
+        session.add(chat)
+        await session.commit()
+        await session.refresh(chat)
+        return CreateChatResponse(chat_id=chat.id)
+
+
+@app.get("/v1/chats", response_model=ChatListResponse)
+async def list_chats(x_user_id: str | None = Header(default=None)):
+    user_id = require_user_id(x_user_id)
+
+    async with SessionLocal() as session:
+        rows = (await session.execute(
+            select(ChatRow)
+            .where(ChatRow.user_id == user_id)
+            .order_by(desc(ChatRow.updated_at))
+            .limit(50)
+        )).scalars().all()
+
+        return ChatListResponse(
+            chats=[
+                ChatListItem(id=c.id, title=c.title, model=c.model, updated_at=c.updated_at)
+                for c in rows
+            ]
+        )
+
+
+@app.get("/v1/chats/{chat_id}", response_model=ChatWithMessagesResponse)
+async def get_chat(chat_id: str, x_user_id: str | None = Header(default=None)):
+    user_id = require_user_id(x_user_id)
+
+    async with SessionLocal() as session:
+        chat = (await session.execute(
+            select(ChatRow)
+            .where(ChatRow.id == chat_id, ChatRow.user_id == user_id)
+            .options(selectinload(ChatRow.messages))
+        )).scalars().first()
+
+        if not chat:
+            raise HTTPException(404, "Chat not found")
+
+        return ChatWithMessagesResponse(
+            id=chat.id,
+            title=chat.title,
+            model=chat.model,
+            messages=[ChatMsg(role=m.role, content=m.content) for m in chat.messages],
+        )
+
+
+
+
+
 @app.post("/v1/chat/stream")
-def chat_stream(req: ChatRequest):
+async def chat_stream(req: ChatRequest, x_user_id: str | None = Header(default=None)):
+    user_id = require_user_id(x_user_id)
     provider, model_name = parse_provider_model(req.model)
 
-    def gen():
+    if req.model not in MODEL_OPTIONS:
+        return StreamingResponse(
+            iter([sse({"error": f"Unsupported model: {req.model}"}), sse({"done": True})]),
+            media_type="text/event-stream",
+        )
+
+    async with SessionLocal() as session:
+        # Load chat + history from DB (source of truth)
+        chat = (await session.execute(
+            select(ChatRow)
+            .where(ChatRow.id == req.chat_id, ChatRow.user_id == user_id)
+            .options(selectinload(ChatRow.messages))
+        )).scalars().first()
+
+        if not chat:
+            raise HTTPException(404, "Chat not found")
+
+        if chat.model != req.model:
+            chat.model = req.model
+            chat.updated_at = utcnow()
+            await session.commit()
+
+        last_user = next((m for m in reversed(req.messages or []) if m.role == "user" and (m.content or "").strip()), None)
+        if not last_user:
+            raise HTTPException(400, "Missing user message")
+
+        user_row = MessageRow(chat_id=chat.id, role="user", content=last_user.content)
+        session.add(user_row)
+        assistant_row = MessageRow(chat_id=chat.id, role="assistant", content="")
+        session.add(assistant_row)
+
+        merged_msgs = [ChatMsg(role=m.role, content=m.content) for m in chat.messages] + [last_user]
+        chat.title = derive_title_from_messages(merged_msgs)
+        chat.updated_at = utcnow()
+
+        await session.commit()
+        await session.refresh(assistant_row)
+
+        assistant_id = assistant_row.id
+
+    async def gen():
+        buffer_text = ""
+        last_flush = time.monotonic()
+        FLUSH_INTERVAL_SEC = 0.25 
+        FLUSH_MIN_CHARS = 40
+
+        async def flush(force: bool = False):
+            nonlocal buffer_text, last_flush
+            if not buffer_text:
+                return
+            if not force:
+                if (time.monotonic() - last_flush) < FLUSH_INTERVAL_SEC and len(buffer_text) < FLUSH_MIN_CHARS:
+                    return
+
+            chunk = buffer_text
+            buffer_text = ""
+            last_flush = time.monotonic()
+
+            async with SessionLocal() as session:
+                msg = (await session.execute(
+                    select(MessageRow).where(MessageRow.id == assistant_id)
+                )).scalars().first()
+                if msg:
+                    msg.content = (msg.content or "") + chunk
+
+                chat2 = (await session.execute(
+                    select(ChatRow).where(ChatRow.id == req.chat_id)
+                )).scalars().first()
+                if chat2:
+                    chat2.updated_at = utcnow()
+
+                await session.commit()
+
         try:
-            if req.model not in MODEL_OPTIONS:
-                raise RuntimeError(f"Unsupported model: {req.model}")
+            async with SessionLocal() as session:
+                chat = (await session.execute(
+                    select(ChatRow).where(ChatRow.id == req.chat_id, ChatRow.user_id == user_id)
+                    .options(selectinload(ChatRow.messages))
+                )).scalars().first()
 
-            if provider in ("openai", "openrouter", "groq", "nebius"):
-                yield from openai_stream(provider, model_name, req)
-                return
+                history = [ChatMsg(role=m.role, content=m.content) for m in (chat.messages if chat else [])]
+                llm_req = ChatRequest(
+                    chat_id=req.chat_id,
+                    model=req.model,
+                    messages=history,
+                    temperature=req.temperature,
+                )
 
-            if provider == "anthropic":
-                yield from anthropic_stream(model_name, req)
-                return
+            loop = asyncio.get_event_loop()
 
-            if provider == "gemini":
-                yield from gemini_stream(model_name, req)
-                return
+            def sync_iter():
+                if provider in ("openai", "openrouter", "groq", "nebius"):
+                    yield from openai_stream(provider, model_name, llm_req)
+                    return
+                if provider == "anthropic":
+                    yield from anthropic_stream(model_name, llm_req)
+                    return
+                if provider == "gemini":
+                    yield from gemini_stream(model_name, llm_req)
+                    return
+                raise RuntimeError(f"Unknown provider: {provider}")
 
-            raise RuntimeError(f"Unknown provider: {provider}")
+            it = iter(sync_iter())
+
+            while True:
+                try:
+                    chunk = await loop.run_in_executor(None, lambda: next(it))
+                except StopIteration:
+                    break
+                yield chunk
+
+                if chunk.startswith("data: "):
+                    payload = chunk[6:].strip()
+                    try:
+                        obj = json.loads(payload)
+                    except Exception:
+                        obj = None
+
+                    if isinstance(obj, dict) and obj.get("t"):
+                        buffer_text += obj["t"]
+                        await flush(False)
+
+                    if isinstance(obj, dict) and obj.get("done"):
+                        await flush(True)
+                        return
+
+            await flush(True)
+            yield sse({"done": True})
+
         except Exception as e:
+            try:
+                await flush(True)
+            except Exception:
+                pass
             yield sse({"error": f"{type(e).__name__}: {str(e)}"})
             yield sse({"done": True})
 

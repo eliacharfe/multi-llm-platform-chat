@@ -1,0 +1,16 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: mlm_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mlm
+      POSTGRES_PASSWORD: mlm
+      POSTGRES_DB: mlm
+    ports:
+      - "5433:5432"
+    volumes:
+      - mlm_pg_data:/var/lib/postgresql/data
+
+volumes:
+  mlm_pg_data:
