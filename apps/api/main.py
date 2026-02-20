@@ -417,7 +417,6 @@ async def delete_chat(chat_id: str, x_user_id: str | None = Header(default=None)
     user_id = require_user_id(x_user_id)
 
     async with SessionLocal() as session:
-        # Ensure chat belongs to this user
         chat = (await session.execute(
             select(ChatRow).where(ChatRow.id == chat_id, ChatRow.user_id == user_id)
         )).scalars().first()
@@ -425,12 +424,10 @@ async def delete_chat(chat_id: str, x_user_id: str | None = Header(default=None)
         if not chat:
             raise HTTPException(404, "Chat not found")
 
-        # 1) delete messages (no cascade)
         await session.execute(
             delete(MessageRow).where(MessageRow.chat_id == chat_id)
         )
 
-        # 2) delete the chat
         await session.delete(chat)
 
         await session.commit()
@@ -458,7 +455,6 @@ async def get_chat(chat_id: str, x_user_id: str | None = Header(default=None)):
             model=chat.model,
             messages=[ChatMsg(role=m.role, content=m.content) for m in chat.messages],
         )
-
 
 
 
@@ -535,7 +531,6 @@ async def chat_stream_with_files(
             media_type="text/event-stream",
         )
 
-    # Parse messages array coming from the frontend (optional)
     try:
         parsed = json.loads(messages or "[]")
         req_msgs = [ChatMsg(**m) for m in parsed] if isinstance(parsed, list) else []
@@ -545,7 +540,6 @@ async def chat_stream_with_files(
     has_files = len(files) > 0
     user_text = (message or "").strip()
 
-    # If user didn't type anything but uploaded files, create a default task
     if not user_text and has_files:
         user_text = (
             "Please analyze the attached file(s).\n"
