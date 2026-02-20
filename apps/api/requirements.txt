@@ -9,3 +9,5 @@ google-genai
 pypdf
 protobuf
 python-multipart
+sqlalchemy
+asyncpg
