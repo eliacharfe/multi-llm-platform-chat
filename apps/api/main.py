@@ -24,6 +24,10 @@ from fastapi import Header, HTTPException
 from sqlalchemy import select, desc, delete
 from sqlalchemy.orm import selectinload
 
+from fastapi import UploadFile, File, Form, Header, HTTPException
+import json
+from typing import List, Optional
+
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
 
 from clients import (
@@ -477,162 +481,6 @@ You are a helpful assistant.
 """.strip()
 
 
-@app.post("/v1/chat/stream")
-async def chat_stream(req: ChatRequest, x_user_id: str | None = Header(default=None)):
-    user_id = require_user_id(x_user_id)
-    provider, model_name = parse_provider_model(req.model)
-
-    if req.model not in MODEL_OPTIONS:
-        return StreamingResponse(
-            iter([sse({"error": f"Unsupported model: {req.model}"}), sse({"done": True})]),
-            media_type="text/event-stream",
-        )
-
-    async with SessionLocal() as session:
-        # Load chat + history from DB (source of truth)
-        chat = (await session.execute(
-            select(ChatRow)
-            .where(ChatRow.id == req.chat_id, ChatRow.user_id == user_id)
-            .options(selectinload(ChatRow.messages))
-        )).scalars().first()
-
-        if not chat:
-            raise HTTPException(404, "Chat not found")
-
-        if chat.model != req.model:
-            chat.model = req.model
-            chat.updated_at = utcnow()
-            await session.commit()
-
-        last_user = next((m for m in reversed(req.messages or []) if m.role == "user" and (m.content or "").strip()), None)
-        if not last_user:
-            raise HTTPException(400, "Missing user message")
-
-        user_row = MessageRow(chat_id=chat.id, role="user", content=last_user.content)
-        session.add(user_row)
-        assistant_row = MessageRow(chat_id=chat.id, role="assistant", content="")
-        session.add(assistant_row)
-
-        merged_msgs = [ChatMsg(role=m.role, content=m.content) for m in chat.messages] + [last_user]
-        chat.title = derive_title_from_messages(merged_msgs)
-        chat.updated_at = utcnow()
-
-        await session.commit()
-        await session.refresh(assistant_row)
-
-        assistant_id = assistant_row.id
-
-    async def gen():
-        buffer_text = ""
-        last_flush = time.monotonic()
-        FLUSH_INTERVAL_SEC = 0.25 
-        FLUSH_MIN_CHARS = 40
-
-        async def flush(force: bool = False):
-            nonlocal buffer_text, last_flush
-            if not buffer_text:
-                return
-            if not force:
-                if (time.monotonic() - last_flush) < FLUSH_INTERVAL_SEC and len(buffer_text) < FLUSH_MIN_CHARS:
-                    return
-
-            chunk = buffer_text
-            buffer_text = ""
-            last_flush = time.monotonic()
-
-            async with SessionLocal() as session:
-                msg = (await session.execute(
-                    select(MessageRow).where(MessageRow.id == assistant_id)
-                )).scalars().first()
-                if msg:
-                    msg.content = (msg.content or "") + chunk
-
-                chat2 = (await session.execute(
-                    select(ChatRow).where(ChatRow.id == req.chat_id)
-                )).scalars().first()
-                if chat2:
-                    chat2.updated_at = utcnow()
-
-                await session.commit()
-
-        try:
-            async with SessionLocal() as session:
-                chat = (await session.execute(
-                    select(ChatRow).where(ChatRow.id == req.chat_id, ChatRow.user_id == user_id)
-                    .options(selectinload(ChatRow.messages))
-                )).scalars().first()
-
-                history = [ChatMsg(role=m.role, content=m.content) for m in (chat.messages if chat else [])]
-
-                # Wrap only the last user message for the LLM call (keep DB stored raw)
-                for i in range(len(history) - 1, -1, -1):
-                    if history[i].role == "user":
-                        wrapped = build_general_task_prompt(history[i].content)
-                        history[i] = ChatMsg(role="user", content=wrapped)
-                        break
-                llm_req = ChatRequest(
-                    chat_id=req.chat_id,
-                    model=req.model,
-                    messages=history,
-                    temperature=req.temperature,
-                )
-
-            loop = asyncio.get_event_loop()
-
-            def sync_iter():
-                if provider in ("openai", "openrouter", "groq", "nebius"):
-                    yield from openai_stream(provider, model_name, llm_req)
-                    return
-                if provider == "anthropic":
-                    yield from anthropic_stream(model_name, llm_req)
-                    return
-                if provider == "gemini":
-                    yield from gemini_stream(model_name, llm_req)
-                    return
-                raise RuntimeError(f"Unknown provider: {provider}")
-
-            it = iter(sync_iter())
-
-            while True:
-                try:
-                    chunk = await loop.run_in_executor(None, lambda: next(it))
-                except StopIteration:
-                    break
-                yield chunk
-
-                if chunk.startswith("data: "):
-                    payload = chunk[6:].strip()
-                    try:
-                        obj = json.loads(payload)
-                    except Exception:
-                        obj = None
-
-                    if isinstance(obj, dict) and obj.get("t"):
-                        buffer_text += obj["t"]
-                        await flush(False)
-
-                    if isinstance(obj, dict) and obj.get("done"):
-                        await flush(True)
-                        return
-
-            await flush(True)
-            yield sse({"done": True})
-
-        except Exception as e:
-            try:
-                await flush(True)
-            except Exception:
-                pass
-            yield sse({"error": f"{type(e).__name__}: {str(e)}"})
-            yield sse({"done": True})
-
-    return StreamingResponse(gen(), media_type="text/event-stream")
-
-
-from fastapi import UploadFile, File, Form, Header, HTTPException
-import json
-from typing import List, Optional
-
 def build_file_task_prompt(
     user_message: str,
     file_context: str,
@@ -687,45 +535,49 @@ async def chat_stream_with_files(
             media_type="text/event-stream",
         )
 
-    # Parse messages array coming from the frontend (optional, but keep compatible)
+    # Parse messages array coming from the frontend (optional)
     try:
         parsed = json.loads(messages or "[]")
         req_msgs = [ChatMsg(**m) for m in parsed] if isinstance(parsed, list) else []
     except Exception:
         req_msgs = []
 
-    # Build file context (uses YOUR existing helper)
-    file_context = await uploads_to_context(files)
-
+    has_files = len(files) > 0
     user_text = (message or "").strip()
-    if not user_text and file_context:
-        user_text = (
-        "Please analyze the attached code.\n"
-        "- Give a short overview\n"
-        "- Identify key responsibilities\n"
-        "- Point out potential bugs, edge cases, and improvements\n"
-        "- Suggest refactors (with example code)\n"
-        "- If this is Swift, include Swift best practices"
-    )
-    if file_context:
-        user_text = (user_text + "\n\n" + file_context).strip()
 
-    if not user_text:
+    # If user didn't type anything but uploaded files, create a default task
+    if not user_text and has_files:
+        user_text = (
+            "Please analyze the attached file(s).\n"
+            "- Give a short overview\n"
+            "- Identify key responsibilities\n"
+            "- Point out potential bugs, edge cases, and improvements\n"
+            "- Suggest refactors (with example code)\n"
+        )
+
+    if not user_text and not has_files:
         return StreamingResponse(
-            iter([sse({"error": "Please type a message or upload a file."}), sse({"done": True})]),
+            iter([sse({"error": "Please type a message."}), sse({"done": True})]),
             media_type="text/event-stream",
         )
 
+    # Build file context ONLY if files exist
+    file_context = await uploads_to_context(files) if has_files else ""
     filenames = [(f.filename or "file") for f in files]
-    user_payload = build_file_task_prompt(
-    user_message=user_text,
-    file_context=file_context,
-    filenames=filenames,
-)
+
+    # ✅ Choose wrapper prompt
+    if has_files:
+        user_payload = build_file_task_prompt(
+            user_message=user_text,
+            file_context=file_context,
+            filenames=filenames,
+        )
+    else:
+        user_payload = build_general_task_prompt(user_text)
 
     provider, model_name = parse_provider_model(model)
 
-    # ----- Persist user msg + create assistant row (same as /v1/chat/stream) -----
+    # ----- Persist user msg + create assistant row -----
     async with SessionLocal() as session:
         chat = (await session.execute(
             select(ChatRow)
@@ -756,7 +608,7 @@ async def chat_stream_with_files(
         await session.refresh(assistant_row)
         assistant_id = assistant_row.id
 
-    # ----- Stream + flush into DB like your existing /v1/chat/stream -----
+    # ----- Stream + flush into DB -----
     async def gen():
         buffer_text = ""
         last_flush = time.monotonic()
@@ -793,23 +645,27 @@ async def chat_stream_with_files(
         try:
             async with SessionLocal() as session:
                 chat = (await session.execute(
-                    select(ChatRow).where(ChatRow.id == chat_id, ChatRow.user_id == user_id)
+                    select(ChatRow)
+                    .where(ChatRow.id == chat_id, ChatRow.user_id == user_id)
                     .options(selectinload(ChatRow.messages))
                 )).scalars().first()
 
                 history = [ChatMsg(role=m.role, content=m.content) for m in (chat.messages if chat else [])]
 
+                # ✅ Replace last user msg with wrapped payload (append once if none)
+                replaced = False
                 for i in range(len(history) - 1, -1, -1):
                     if history[i].role == "user":
                         history[i] = ChatMsg(role="user", content=user_payload)
+                        replaced = True
                         break
-                    else:
-                        history.append(ChatMsg(role="user", content=user_payload))
+                if not replaced:
+                    history.append(ChatMsg(role="user", content=user_payload))
 
                 llm_req = ChatRequest(
                     chat_id=chat_id,
                     model=model,
-                    messages=history,                 # includes the user_text you just stored
+                    messages=history,
                     temperature=temperature,
                 )
 
