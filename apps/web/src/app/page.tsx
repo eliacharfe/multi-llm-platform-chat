@@ -2,15 +2,12 @@
 // web/src/app/page.tsx
 "use client";
 
-import React, { useMemo, useRef, useState } from "react";
+import React, { useMemo, useRef, useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import CopyButton from "@/components/ui/CopyButton";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
-
-// =========================
-// Models / Providers (ported from Gradio)
-// =========================
 
 const MODEL_OPTIONS = [
   "openai:gpt-5-nano",
@@ -140,6 +137,12 @@ function Spinner() {
   );
 }
 
+function childrenToText(children: React.ReactNode): string {
+  if (typeof children === "string") return children;
+  if (Array.isArray(children)) return children.map(childrenToText).join("");
+  return children?.toString?.() ?? "";
+}
+
 // =========================
 // Page
 // =========================
@@ -160,7 +163,6 @@ export default function Page() {
   const isStreamingRef = useRef(false);
 
   const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
-
   const canSend = useMemo(
     () => input.trim().length > 0 && !isStreaming,
     [input, isStreaming]
@@ -172,8 +174,9 @@ export default function Page() {
     const userMsg: Msg = { role: "user", content: input.trim() };
     const nextMessages = [...messages, userMsg];
 
-    // keep the final assistant message as the "stream target"
     setMessages([...nextMessages, { role: "assistant", content: "" }]);
+    autoScrollEnabledRef.current = true;
+    scrollToBottom(true); // force
     setInput("");
     autoScrollEnabledRef.current = true;
     isStreamingRef.current = true;
@@ -228,6 +231,7 @@ export default function Page() {
               setIsStreaming(false);
               abortRef.current = null;
               isStreamingRef.current = false;
+              scrollToBottom(true);
               return;
             }
 
@@ -261,9 +265,7 @@ export default function Page() {
               return copy;
             });
 
-            if (autoScrollEnabledRef.current) {
-              requestAnimationFrame(scrollToBottom);
-            }
+            scrollToBottom(false);
           }
         }
       }
@@ -288,10 +290,24 @@ export default function Page() {
     isStreamingRef.current = false;
   }
 
-  function scrollToBottom() {
+  function isNearBottom(threshold = 120) {
+    const el = scrollRef.current;
+    if (!el) return true;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    return distance <= threshold;
+  }
+
+  function scrollToBottom(force = false) {
     const el = scrollRef.current;
     if (!el) return;
-    el.scrollTop = el.scrollHeight;
+
+    if (!force && !autoScrollEnabledRef.current) return;
+
+    requestAnimationFrame(() => {
+      const el2 = scrollRef.current;
+      if (!el2) return;
+      el2.scrollTop = el2.scrollHeight;
+    });
   }
 
   return (
@@ -303,7 +319,6 @@ export default function Page() {
             + New Chat
           </button>
 
-          {/* “search / current prompt” input */}
           <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 flex items-center gap-2">
             <input
               className="w-full bg-transparent outline-none text-sm placeholder:text-gray-400"
@@ -332,17 +347,7 @@ export default function Page() {
               ref={scrollRef}
               className="flex-1 overflow-y-auto px-6 pt-28 pb-10"
               onScroll={() => {
-                const el = scrollRef.current;
-                if (!el) return;
-                if (!isStreamingRef.current) return;
-
-                const threshold = 80;
-                const distanceFromBottom =
-                  el.scrollHeight - el.scrollTop - el.clientHeight;
-
-                if (distanceFromBottom > threshold) {
-                  autoScrollEnabledRef.current = false;
-                }
+                autoScrollEnabledRef.current = isNearBottom(140);
               }}
             >
               <div className="mx-auto max-w-3xl">
@@ -356,6 +361,7 @@ export default function Page() {
                       .filter((m) => m.role !== "system")
                       .map((m, idx) => {
                         const isUser = m.role === "user";
+                        const isAssistant = m.role === "assistant";
 
                         return (
                           <div
@@ -364,62 +370,90 @@ export default function Page() {
                               }`}
                           >
                             {isUser ? (
-                              // ✅ USER = bubble
-                              <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed bg-[#3a3a3a] text-gray-100">
-                                {m.content}
+                              // ✅ USER = bubble + copy button
+                              <div className="max-w-[75%]">
+                                <div className="relative whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed bg-[#3a3a3a] text-gray-100">
+                                  {m.content}
+                                </div>
+                                <div className="mt-2 flex justify-end">
+                                  <CopyButton text={m.content} />
+                                </div>
                               </div>
                             ) : (
-                              // ✅ ASSISTANT = plain (no bubble)
-                              <div className="w-full max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
-                                {/* ✅ loader row while waiting for first tokens */}
-                                {isStreaming &&
-                                  idx === messages.length - 1 &&
-                                  (m.content?.length ?? 0) === 0 && (
-                                    <div className="flex items-center gap-3 text-gray-400">
-                                      <Spinner />
-                                      <span>{thinkingText(model)}</span>
-                                    </div>
-                                  )}
+                              // ✅ ASSISTANT = plain + copy button
+                              <div className="w-full max-w-3xl">
+                                <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
+                                  {/* ✅ loader row while waiting for first tokens */}
+                                  {isStreaming &&
+                                    idx === messages.length - 1 &&
+                                    (m.content?.length ?? 0) === 0 && (
+                                      <div className="flex items-center gap-3 text-gray-400">
+                                        <Spinner />
+                                        <span>{thinkingText(model)}</span>
+                                      </div>
+                                    )}
 
-                                {/* normal markdown */}
-                                {m.content?.length ? (
-                                  <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    components={{
-                                      code({
-                                        className,
-                                        children,
-                                        ...props
-                                      }) {
-                                        const isBlock =
-                                          /language-\w+/.test(className || "");
-                                        if (isBlock) {
+                                  {/* normal markdown */}
+                                  {m.content?.length ? (
+                                    <ReactMarkdown
+                                      remarkPlugins={[remarkGfm]}
+                                      components={{
+                                        code({ className, children, ...props }) {
+                                          const lang =
+                                            (className || "").match(/language-(\w+)/)?.[1] ||
+                                            "";
+
+                                          const isBlock =
+                                            /language-\w+/.test(className || "");
+                                          const raw = childrenToText(children).replace(/\n$/, "");
+
+                                          if (isBlock) {
+                                            return (
+                                              <div className="relative my-3">
+                                                <div className="absolute right-2 top-2 flex items-center gap-2">
+                                                  {lang ? (
+                                                    <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
+                                                      {lang}
+                                                    </span>
+                                                  ) : null}
+                                                  <CopyButton
+                                                    text={raw}
+                                                    className="bg-black/30"
+                                                    title="Copy code"
+                                                  />
+                                                </div>
+
+                                                <pre className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto text-sm">
+                                                  <code className={className} {...props}>
+                                                    {children}
+                                                  </code>
+                                                </pre>
+                                              </div>
+                                            );
+                                          }
+
+                                          // inline code (optional: you can also copy inline, but usually not needed)
                                           return (
-                                            <pre className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 overflow-x-auto text-sm">
-                                              <code
-                                                className={className}
-                                                {...props}
-                                              >
-                                                {children}
-                                              </code>
-                                            </pre>
+                                            <code
+                                              className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
+                                              {...props}
+                                            >
+                                              {children}
+                                            </code>
                                           );
-                                        }
+                                        },
+                                      }}
+                                    >
+                                      {m.content}
+                                    </ReactMarkdown>
+                                  ) : null}
+                                </div>
 
-                                        // inline code
-                                        return (
-                                          <code
-                                            className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
-                                            {...props}
-                                          >
-                                            {children}
-                                          </code>
-                                        );
-                                      },
-                                    }}
-                                  >
-                                    {m.content}
-                                  </ReactMarkdown>
+                                {/* message-level copy button */}
+                                {isAssistant && (m.content?.length ?? 0) > 0 ? (
+                                  <div className="mt-2 flex justify-start">
+                                    <CopyButton text={m.content} />
+                                  </div>
                                 ) : null}
                               </div>
                             )}
@@ -435,7 +469,6 @@ export default function Page() {
             <div className="px-6 pb-6 pt-4">
               <div className="mx-auto max-w-3xl">
                 <div className="rounded-2xl border border-white/10 bg-[#2f2f2f] shadow-xl">
-                  {/* input row */}
                   <div className="px-4 pt-4">
                     <textarea
                       className="w-full resize-none bg-transparent outline-none text-gray-100 placeholder:text-gray-400 text-sm leading-relaxed"
@@ -453,25 +486,19 @@ export default function Page() {
                     />
                   </div>
 
-                  {/* controls row (model + multimodal + send) */}
                   <div className="flex items-center justify-between gap-3 px-3 pb-3">
                     <div className="flex items-center gap-2">
-                      {/* OPTIONAL: attachments (multimodal) */}
                       <label className="cursor-pointer rounded-lg px-2 py-2 hover:bg-white/5 transition border border-transparent hover:border-white/10">
                         📎
                         <input
                           type="file"
                           multiple
                           className="hidden"
-                          // TODO: hook this to your uploads state if you have one
-                          onChange={(e) => {
-                            // example: console.log([...e.target.files || []])
-                          }}
+                          onChange={(e) => { }}
                           disabled={isStreaming}
                         />
                       </label>
 
-                      {/* model dropdown */}
                       <select
                         className="rounded-lg border border-white/10 bg-[#262626] px-3 py-2 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-white/20"
                         value={model}
@@ -493,7 +520,6 @@ export default function Page() {
                         ))}
                       </select>
 
-                      {/* stop button */}
                       <button
                         className="rounded-lg border border-white/10 px-3 py-2 text-xs text-gray-300 hover:bg-white/5 disabled:opacity-40 transition"
                         onClick={stop}
@@ -503,7 +529,6 @@ export default function Page() {
                       </button>
                     </div>
 
-                    {/* send button (circle) */}
                     <button
                       className="h-10 w-10 rounded-full bg-blue-600 hover:bg-blue-500 transition disabled:opacity-40 flex items-center justify-center"
                       onClick={send}
@@ -515,7 +540,6 @@ export default function Page() {
                   </div>
                 </div>
 
-                {/* small helper text under composer (optional) */}
                 <div className="mt-3 text-center text-xs text-gray-500">
                   Multi-LLM Platform • Streaming enabled
                 </div>
