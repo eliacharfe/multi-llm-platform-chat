@@ -195,6 +195,8 @@ function getUserId(): string {
 export default function Page() {
   const DEFAULT_MODEL = "openai:gpt-5-mini";
 
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -223,6 +225,20 @@ export default function Page() {
     if (!q) return chats;
     return chats.filter((c) => (c.title || "").toLowerCase().includes(q));
   }, [chats, chatSearch]);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)"); // tweak breakpoint if you want
+    const apply = () => setIsSidebarCollapsed(mq.matches);
+
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const res = await fetch(`${apiUrl}${path}`, {
@@ -458,9 +474,12 @@ export default function Page() {
   return (
     <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
 
+      {/* ICON */}
       <a
         href="/"
-        className="fixed left-4 top-4 z-50 transition hover:scale-105 active:scale-95"
+        className={`fixed left-3 top-2 z-50 transition-all duration-300 hover:scale-105 active:scale-95 ${isSidebarCollapsed
+          ? "opacity-0 scale-90 pointer-events-none"
+          : "opacity-100 scale-100"}`}
         title="Multi LLM Chat"
       >
         <img
@@ -470,120 +489,144 @@ export default function Page() {
         />
       </a>
 
-
       <div className="flex h-full">
         {/* LEFT SIDEBAR */}
-        <aside className="w-[280px] border-r border-white/10 bg-[#2b2b2b] p-4 flex flex-col gap-4 pt-20">
-          <button
-            className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left "
-            onClick={newDraftChat}
-          >
-            + New Chat
-          </button>
+        <aside
+          className={[
+            "border-r border-white/10 bg-[#2b2b2b] flex flex-col overflow-hidden transition-all duration-200 ease-out",
+            isSidebarCollapsed ? "w-[56px]" : "w-[250px] sm:w-[270px] lg:w-[280px] xl:w-[290px]",
+          ].join(" ")}
+        >
 
-          <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 flex items-center gap-2">
-            <input
-              className="w-full bg-transparent outline-none text-sm placeholder:text-gray-400"
-              placeholder="Search chats..."
-              value={chatSearch}
-              onChange={(e) => setChatSearch(e.target.value)}
-            />
-
+          {/* Toggle button */}
+          <div className="relative pt-20 px-2">
             <button
-              className="opacity-70 hover:opacity-100 transition"
-              title="Search"
+              type="button"
+              onClick={() => setIsSidebarCollapsed((v) => !v)}
+              className={[
+                "absolute top-2 z-10 h-10 w-10 flex items-center justify-center",
+                "text-gray-300 hover:text-white transition-opacity opacity-70 hover:opacity-100",
+                isSidebarCollapsed ? "left-1/2 -translate-x-1/2" : "right-2",
+              ].join(" ")}
+              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="w-4 h-4"
+              {isSidebarCollapsed ? (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-6 w-6"
+                >
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              ) : (
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  className="h-6 w-6"
+                >
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* Sidebar content (full height column) */}
+          {!isSidebarCollapsed && (
+            <div className="flex-1 p-4 pt-0 flex flex-col gap-4">
+              <button
+                className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left"
+                onClick={newDraftChat}
               >
-                <circle cx="11" cy="11" r="8" />
-                <line x1="21" y1="21" x2="16.65" y2="16.65" />
-              </svg>
-            </button>
-          </div>
+                + New Chat
+              </button>
 
-          {/* Chats list (saved only) */}
-          <div className="flex-1 overflow-y-auto pr-1 -mr-1">
-            {isSidebarLoading && chats.length === 0 ? (
-              <div className="text-xs text-gray-400 px-2 py-2">Loading chats…</div>
-            ) : filteredChats.length === 0 ? (
-              <div className="text-xs text-gray-400 px-2 py-2">
-                No saved chats yet.
+              <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 flex items-center gap-2">
+                <input
+                  className="w-full bg-transparent outline-none text-sm placeholder:text-gray-400"
+                  placeholder="Search chats..."
+                  value={chatSearch}
+                  onChange={(e) => setChatSearch(e.target.value)}
+                />
+                <button className="opacity-70 hover:opacity-100 transition" title="Search">
+                  {/* your search icon */}
+                </button>
               </div>
-            ) : (
-              <div className="flex flex-col gap-1">
-                {filteredChats.map((c) => {
-                  const active = c.id === activeChatId;
 
-                  return (
-                    <div
-                      key={c.id}
-                      className={[
-                        "group w-full text-left rounded-lg px-3 py-2 border transition relative",
-                        active
-                          ? "bg-white/10 border-white/15"
-                          : "bg-black/10 border-white/10 hover:bg-white/10 hover:border-white/15",
-                      ].join(" ")}
-                    >
-                      {/* Clickable area */}
-                      <button
-                        onClick={() => openChat(c.id)}
-                        className="w-full text-left"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm text-gray-100 truncate">
-                            {c.title || "New chat"}
-                          </div>
-                          <div className="text-[11px] text-gray-400 shrink-0">
-                            {formatChatTime(c.updated_at)}
-                          </div>
+              {/* Chats list */}
+              <div className="flex-1 overflow-y-auto pr-1 -mr-1">
+                {isSidebarLoading && chats.length === 0 ? (
+                  <div className="text-xs text-gray-400 px-2 py-2">Loading chats…</div>
+                ) : filteredChats.length === 0 ? (
+                  <div className="text-xs text-gray-400 px-2 py-2">No saved chats yet.</div>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    {filteredChats.map((c) => {
+                      const active = c.id === activeChatId;
+                      return (
+                        <div
+                          key={c.id}
+                          className={[
+                            "group w-full text-left rounded-lg px-3 py-2 border transition relative",
+                            active
+                              ? "bg-white/10 border-white/15"
+                              : "bg-black/10 border-white/10 hover:bg-white/10 hover:border-white/15",
+                          ].join(" ")}
+                        >
+                          <button onClick={() => openChat(c.id)} className="w-full text-left">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-sm text-gray-100 truncate">
+                                {c.title || "New chat"}
+                              </div>
+                              <div className="text-[11px] text-gray-400 shrink-0">
+                                {formatChatTime(c.updated_at)}
+                              </div>
+                            </div>
+                            <div className="mt-1 text-[11px] text-gray-400 truncate">{c.model}</div>
+                          </button>
+
+                          <button
+                            onClick={async (e) => {
+                              e.stopPropagation();
+                              if (!confirm("Delete this chat?")) return;
+
+                              await api(`/v1/chats/${c.id}`, { method: "DELETE" });
+
+                              if (activeChatId === c.id) {
+                                setActiveChatId(null);
+                                setMessages([]);
+                              }
+                              await refreshChats();
+                            }}
+                            className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-400"
+                            title="Delete chat"
+                          >
+                            🗑️
+                          </button>
                         </div>
-                        <div className="mt-1 text-[11px] text-gray-400 truncate">
-                          {c.model}
-                        </div>
-                      </button>
-
-                      {/* Delete button */}
-                      <button
-                        onClick={async (e) => {
-                          e.stopPropagation();
-                          if (!confirm("Delete this chat?")) return;
-
-                          await api(`/v1/chats/${c.id}`, {
-                            method: "DELETE",
-                          });
-
-                          if (activeChatId === c.id) {
-                            setActiveChatId(null);
-                            setMessages([]);
-                          }
-
-                          await refreshChats();
-                        }}
-                        className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-400"
-                        title="Delete chat"
-                      >
-                        🗑️
-                      </button>
-                    </div>
-                  );
-                })}
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
-          </div>
 
-          <div className="mt-auto">
-            <button className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center gap-2">
-              <span>Eliachar Feig</span>
-            </button>
-          </div>
+              <div className="mt-auto">
+                <button className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center gap-2">
+                  <span>Eliachar Feig</span>
+                </button>
+              </div>
+            </div>
+          )}
         </aside>
 
         {/* MAIN CHAT AREA */}
