@@ -6,6 +6,9 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypePrism from "rehype-prism-plus";
 
+import * as Prism from "prismjs";
+import "@/lib/prism";
+
 import CopyButton from "@/components/ui/CopyButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ModelDropdown from "@/components/ui/ModelDropdown";
@@ -366,7 +369,10 @@ export default function Page() {
   async function send() {
     if (!canSend) return;
 
-    const userText = input.trim() || (attachedFiles.length ? "Summarize the attached file(s)." : "");
+    const userText =
+      input.trim() ||
+      (attachedFiles.length ? "Summarize the attached file(s)." : "");
+
     if (!userText && attachedFiles.length === 0) return;
 
     const chatId = await ensureChatId();
@@ -375,6 +381,7 @@ export default function Page() {
     const nextMessages = [...messages, userMsg];
 
     setMessages([...nextMessages, { role: "assistant", content: "" }]);
+
     autoScrollEnabledRef.current = true;
     scrollToBottom(true);
 
@@ -392,10 +399,11 @@ export default function Page() {
       fd.append("model", model);
       fd.append("temperature", String(getTemperature(model)));
       fd.append("message", userText);
-
       fd.append("messages", JSON.stringify(nextMessages));
 
-      for (const f of attachedFiles) fd.append("files", f);
+      for (const f of attachedFiles) {
+        fd.append("files", f);
+      }
 
       const res = await fetch(`${apiUrl}/v1/chat/stream_with_files`, {
         method: "POST",
@@ -413,14 +421,11 @@ export default function Page() {
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
+
       let buffer = "";
+      let finished = false;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
+      const processBuffer = () => {
         while (true) {
           const idx = buffer.indexOf("\n\n");
           if (idx === -1) break;
@@ -430,7 +435,9 @@ export default function Page() {
 
           for (const line of block.split("\n")) {
             if (!line.startsWith("data:")) continue;
+
             const payload = line.slice(5).trim();
+            if (!payload) continue;
 
             let obj: any;
             try {
@@ -440,14 +447,7 @@ export default function Page() {
             }
 
             if (obj.done) {
-              setIsStreaming(false);
-              abortRef.current = null;
-              isStreamingRef.current = false;
-
-              setAttachedFiles([]);
-
-              scrollToBottom(true);
-              refreshChats().catch(() => { });
+              finished = true;
               return;
             }
 
@@ -472,24 +472,49 @@ export default function Page() {
             setMessages((prev) => {
               const copy = [...prev];
               const last = copy[copy.length - 1];
+
               if (last?.role === "assistant") {
                 copy[copy.length - 1] = {
                   ...last,
                   content: (last.content || "") + token,
                 };
               }
+
               return copy;
             });
 
             scrollToBottom(false);
           }
         }
+      };
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (value) {
+          buffer += decoder.decode(value, { stream: true });
+          processBuffer();
+        }
+
+        if (done) break;
       }
+
+      buffer += decoder.decode();
+      processBuffer();
+
+      if (!finished) {
+        finished = true;
+      }
+
+      setAttachedFiles([]);
+      scrollToBottom(true);
+      refreshChats().catch(() => { });
     } catch (e: any) {
       if (e?.name !== "AbortError") {
         setMessages((prev) => {
           const copy = [...prev];
           const last = copy[copy.length - 1];
+
           if (last?.role === "assistant" && (last.content || "") === "") {
             copy[copy.length - 1] = {
               ...last,
@@ -497,7 +522,11 @@ export default function Page() {
             };
             return copy;
           }
-          return [...copy, { role: "assistant", content: `⚠️ ${String(e?.message || e)}` }];
+
+          return [
+            ...copy,
+            { role: "assistant", content: `⚠️ ${String(e?.message || e)}` },
+          ];
         });
       }
     } finally {
@@ -871,7 +900,7 @@ export default function Page() {
                           >
                             {isUser ? (
                               <div className="max-w-[75%]">
-                                <div className="relative whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed bg-[#3a3a3a] text-gray-100">
+                                <div className="text-sm leading-relaxed text-gray-100">
                                   {/* {m.content} */}
                                   <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
@@ -943,46 +972,45 @@ export default function Page() {
                                     <ReactMarkdown
                                       remarkPlugins={[remarkGfm]}
                                       components={{
-                                        code({ className, children, ...props }) {
-                                          const lang =
-                                            (className || "").match(/language-(\w+)/)?.[1] || "";
+                                        code({ className, children, node, ...props }) {
+                                          const lang = (className || "").match(/language-(\w+)/)?.[1] || "";
                                           const isBlock = /language-\w+/.test(className || "");
-                                          const raw = childrenToText(children).replace(/\n$/, "");
 
                                           if (isBlock) {
+                                            const raw = childrenToText(children).replace(/\n$/, "");
+
+                                            const grammar = Prism.languages[lang];
+                                            const highlighted = grammar
+                                              ? Prism.highlight(raw, grammar, lang)
+                                              : raw;
+
                                             return (
                                               <div className="relative my-3">
                                                 <div className="absolute right-2 top-2 flex items-center gap-2">
-                                                  {lang ? (
+                                                  {lang && (
                                                     <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
                                                       {lang}
                                                     </span>
-                                                  ) : null}
-                                                  <CopyButton
-                                                    text={raw}
-                                                    className="bg-black/30"
-                                                    title="Copy code"
-                                                  />
+                                                  )}
+                                                  <CopyButton text={raw} className="bg-black/30" title="Copy code" />
                                                 </div>
-
                                                 <pre className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto text-sm">
-                                                  <code className={className} {...props}>
-                                                    {children}
-                                                  </code>
+                                                  <code
+                                                    className={className}
+                                                    dangerouslySetInnerHTML={{ __html: highlighted }}
+                                                  />
                                                 </pre>
                                               </div>
                                             );
                                           }
 
                                           return (
-                                            <code
-                                              className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
-                                              {...props}
-                                            >
+                                            <code className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs" {...props}>
                                               {children}
                                             </code>
                                           );
                                         },
+
                                       }}
                                     >
                                       {m.content}
