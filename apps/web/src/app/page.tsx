@@ -2,6 +2,8 @@
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -13,6 +15,10 @@ export default function Page() {
 
   const apiUrl = process.env.NEXT_PUBLIC_API_URL!;
   const abortRef = useRef<AbortController | null>(null);
+
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const autoScrollEnabledRef = useRef(true);
+  const isStreamingRef = useRef(false);
 
   const canSend = useMemo(
     () => input.trim().length > 0 && !isStreaming,
@@ -27,6 +33,8 @@ export default function Page() {
 
     setMessages([...nextMessages, { role: "assistant", content: "" }]);
     setInput("");
+    autoScrollEnabledRef.current = true;
+    isStreamingRef.current = true;
     setIsStreaming(true);
 
     const ac = new AbortController();
@@ -40,7 +48,6 @@ export default function Page() {
         body: JSON.stringify({
           model,
           messages: nextMessages,
-          // You can still send this; backend may ignore it for some models
           temperature: 0.7,
         }),
       });
@@ -57,7 +64,6 @@ export default function Page() {
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Parse SSE blocks separated by \n\n
         while (true) {
           const idx = buffer.indexOf("\n\n");
           if (idx === -1) break;
@@ -67,20 +73,20 @@ export default function Page() {
 
           for (const line of block.split("\n")) {
             if (!line.startsWith("data:")) continue;
-
-            // DO NOT trim -> preserves spaces/newlines inside JSON string
             const payload = line.slice(5);
 
             let obj: any;
             try {
               obj = JSON.parse(payload);
             } catch {
-              continue; // ignore malformed events
+              continue;
             }
+
 
             if (obj.done) {
               setIsStreaming(false);
               abortRef.current = null;
+              isStreamingRef.current = false;
               return;
             }
 
@@ -113,6 +119,10 @@ export default function Page() {
               }
               return copy;
             });
+
+            if (autoScrollEnabledRef.current) {
+              requestAnimationFrame(scrollToBottom);
+            }
           }
         }
       }
@@ -126,6 +136,7 @@ export default function Page() {
     } finally {
       setIsStreaming(false);
       abortRef.current = null;
+      isStreamingRef.current = false;
     }
   }
 
@@ -133,6 +144,13 @@ export default function Page() {
     abortRef.current?.abort();
     abortRef.current = null;
     setIsStreaming(false);
+    isStreamingRef.current = false;
+  }
+
+  function scrollToBottom() {
+    const el = scrollRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }
 
   return (
@@ -157,7 +175,7 @@ export default function Page() {
 
           <div className="mt-auto">
             <button className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center gap-2">
-              🤝 <span>Sign in with Hugging Face</span>
+              <span>Eliachar Feig</span>
             </button>
           </div>
         </aside>
@@ -167,40 +185,85 @@ export default function Page() {
 
           {/* chat scroller */}
           <div className="h-full flex flex-col">
-            <div className="flex-1 overflow-y-auto px-6 pt-28 pb-10">
+            <div
+              ref={scrollRef}
+              className="flex-1 overflow-y-auto px-6 pt-28 pb-10"
+              onScroll={() => {
+                const el = scrollRef.current;
+                if (!el) return;
+
+                if (!isStreamingRef.current) return;
+
+                const threshold = 80;
+                const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+
+                if (distanceFromBottom > threshold) {
+                  autoScrollEnabledRef.current = false;
+                }
+              }}
+            >
               <div className="mx-auto max-w-3xl">
                 {messages.length === 0 ? (
                   <div className="text-sm text-gray-400">
                     Choose a model, and ask anything…
                   </div>
                 ) : (
-                  <div className="space-y-4">
+                  <div className="space-y-5">
                     {messages
                       .filter((m) => m.role !== "system")
                       .map((m, idx) => {
                         const isUser = m.role === "user";
-                        const isAssistant = m.role === "assistant";
 
                         return (
                           <div
                             key={idx}
                             className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                           >
-                            <div
-                              className={[
-                                "max-w-[75%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed",
-                                isUser
-                                  ? "bg-[#3a3a3a] text-gray-100"
-                                  : "bg-transparent text-gray-100",
-                                isAssistant ? "border border-white/10 bg-white/5" : "",
-                              ].join(" ")}
-                            >
-                              {m.content}
-                            </div>
+                            {isUser ? (
+                              // ✅ USER = bubble
+                              <div className="max-w-[75%] whitespace-pre-wrap rounded-2xl px-4 py-3 text-sm leading-relaxed bg-[#3a3a3a] text-gray-100">
+                                {m.content}
+                              </div>
+                            ) : (
+                              // ✅ ASSISTANT = plain (no bubble)
+
+                              <div className="w-full max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
+                                <ReactMarkdown
+                                  remarkPlugins={[remarkGfm]}
+                                  components={{
+                                    code({ className, children, ...props }) {
+                                      const isBlock = /language-\w+/.test(className || "");
+                                      if (isBlock) {
+                                        return (
+                                          <pre className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 overflow-x-auto text-sm">
+                                            <code className={className} {...props}>
+                                              {children}
+                                            </code>
+                                          </pre>
+                                        );
+                                      }
+
+                                      // inline code
+                                      return (
+                                        <code
+                                          className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
+                                          {...props}
+                                        >
+                                          {children}
+                                        </code>
+                                      );
+                                    },
+                                  }}
+                                >
+                                  {m.content}
+                                </ReactMarkdown>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
                   </div>
+
                 )}
               </div>
             </div>
