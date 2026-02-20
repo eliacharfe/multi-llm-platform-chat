@@ -102,10 +102,11 @@ export default function ModelDropdown({
                                             setOpen(false);
                                         }}
                                         className={[
-                                            "w-full text-left px-3 py-2 rounded-xl text-sm transition",
+                                            "w-full text-left px-3 py-2 rounded-xl text-sm transition-colors duration-150",
+                                            "hover:bg-white/[0.08]",
                                             isActive
                                                 ? "bg-white/10 text-gray-100"
-                                                : "hover:bg-white/[0.06] text-gray-200",
+                                                : "text-gray-200",
                                         ].join(" ")}
                                     >
                                         {opt.label}
