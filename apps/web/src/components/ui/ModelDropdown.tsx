@@ -42,6 +42,28 @@ export default function ModelDropdown({
         return () => window.removeEventListener("keydown", onKey);
     }, []);
 
+    function useMediaQuery(query: string) {
+        const [matches, setMatches] = useState(false);
+
+        useEffect(() => {
+            const mq = window.matchMedia(query);
+            const apply = () => setMatches(mq.matches);
+            apply();
+
+            if (mq.addEventListener) mq.addEventListener("change", apply);
+            else mq.addListener(apply);
+
+            return () => {
+                if (mq.removeEventListener) mq.removeEventListener("change", apply);
+                else mq.removeListener(apply);
+            };
+        }, [query]);
+
+        return matches;
+    }
+
+    const isSmall = useMediaQuery("(max-width: 520px)");
+
     return (
         <div className="relative" ref={wrapRef}>
             <button
@@ -75,7 +97,12 @@ export default function ModelDropdown({
                     />
 
                     {/* Dropdown panel */}
-                    <div className="absolute left-0 bottom-full mb-2 w-[320px] max-w-[80vw] rounded-2xl border border-white/10 bg-[#1f1f1f] shadow-2xl overflow-hidden z-50">
+                    <div
+                        className={[
+                            "absolute bottom-full mb-2 w-[320px] max-w-[92vw] rounded-2xl border border-white/10 bg-[#1f1f1f] shadow-2xl overflow-hidden z-50",
+                            isSmall ? "left-1/2 -translate-x-1/2" : "left-0",
+                        ].join(" ")}
+                    >
                         <div className="max-h-[70vh] overflow-y-auto p-2">
                             {options.map((opt) => {
                                 const isHeader = !!opt.disabled;

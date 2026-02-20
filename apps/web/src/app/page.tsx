@@ -320,6 +320,8 @@ export default function Page() {
     setMessages([]);
     autoScrollEnabledRef.current = true;
     scrollToBottom(true);
+
+    if (isSmallRef.current) setIsSidebarCollapsed(true);
   }
 
   async function openChat(chatId: string) {
@@ -331,16 +333,15 @@ export default function Page() {
     setActiveChatId(chatId);
 
     const detail = await api<any>(`/v1/chats/${chatId}`, { method: "GET" });
-
     const chat = detail?.chat ?? detail;
-
-    console.log("openChat detail:", detail);
 
     setMessages(Array.isArray(chat?.messages) ? chat.messages : []);
     if (chat?.model) setModel(chat.model);
 
     autoScrollEnabledRef.current = true;
     scrollToBottom(true);
+
+    if (isSmallRef.current) setIsSidebarCollapsed(true);
   }
 
   async function ensureChatId(): Promise<string> {
@@ -532,8 +533,56 @@ export default function Page() {
     });
   }
 
+  const isSmallRef = useRef(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const apply = () => {
+      isSmallRef.current = mq.matches;
+      setIsSidebarCollapsed(mq.matches);
+    };
+
+    apply();
+    mq.addEventListener?.("change", apply) ?? mq.addListener(apply);
+
+    return () => {
+      mq.removeEventListener?.("change", apply) ?? mq.removeListener(apply);
+    };
+  }, []);
+
+  const [isSmall, setIsSmall] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 900px)");
+    const apply = () => {
+      setIsSmall(mq.matches);
+      setIsSidebarCollapsed(mq.matches); // default collapsed on mobile
+    };
+
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
+
   return (
     <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
+
+      {isSmall ? (
+        <button
+          type="button"
+          onClick={() => setIsSidebarCollapsed((v) => !v)}
+          className="fixed left-3 top-3 z-[60] h-10 w-10 rounded-xl border border-white/10 bg-black/30 backdrop-blur flex items-center justify-center text-gray-200 hover:bg-black/40 transition"
+          aria-label={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
+          title={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
+        >
+          {isSidebarCollapsed ? "☰" : "✕"}
+        </button>
+      ) : null}
 
       {/* ICON */}
       <a
@@ -551,11 +600,31 @@ export default function Page() {
       </a>
 
       <div className="flex h-full">
+
+        {/* Mobile backdrop */}
+        {isSmall && !isSidebarCollapsed ? (
+          <div
+            className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm"
+            onClick={() => setIsSidebarCollapsed(true)}
+          />
+        ) : null}
         {/* LEFT SIDEBAR */}
         <aside
           className={[
-            "h-full min-h-0 border-r border-white/10 bg-[#2b2b2b] flex flex-col overflow-hidden transition-all duration-200 ease-out",
-            isSidebarCollapsed ? "w-[56px]" : "w-[250px] sm:w-[270px] lg:w-[280px] xl:w-[290px]",
+            "h-full min-h-0 border-r border-white/10 bg-[#2b2b2b] flex flex-col overflow-hidden",
+            "transition-all duration-200 ease-out",
+
+            isSmall
+              ? [
+                "fixed left-0 top-0 z-50",
+                "w-[92vw] max-w-[420px]",
+                "transform transition-transform duration-200 ease-out will-change-transform",
+                isSidebarCollapsed ? "-translate-x-full" : "translate-x-0",
+              ].join(" ")
+              :
+              (isSidebarCollapsed
+                ? "w-[56px]"
+                : "w-[250px] sm:w-[270px] lg:w-[280px] xl:w-[290px]"),
           ].join(" ")}
         >
 
@@ -621,8 +690,24 @@ export default function Page() {
                     value={chatSearch}
                     onChange={(e) => setChatSearch(e.target.value)}
                   />
-                  <button className="opacity-70 hover:opacity-100 transition" title="Search">
-                    {/* your search icon */}
+                  <button
+                    className="opacity-70 hover:opacity-100 transition cursor-pointer"
+                    title="Search"
+                    type="button"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      className="h-4 w-4 text-gray-300"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      aria-hidden="true"
+                    >
+                      <circle cx="11" cy="11" r="8" />
+                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
                   </button>
                 </div>
               </div>
