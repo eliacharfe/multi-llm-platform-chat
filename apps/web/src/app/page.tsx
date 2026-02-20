@@ -216,6 +216,8 @@ export default function Page() {
   const autoScrollEnabledRef = useRef(true);
   const isStreamingRef = useRef(false);
 
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+
   // Confirm dialog
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
@@ -252,8 +254,8 @@ export default function Page() {
 
   const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
   const canSend = useMemo(
-    () => input.trim().length > 0 && !isStreaming,
-    [input, isStreaming]
+    () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
+    [input, attachedFiles.length, isStreaming]
   );
 
   const filteredChats = useMemo(() => {
@@ -361,15 +363,20 @@ export default function Page() {
   async function send() {
     if (!canSend) return;
 
+    const userText = input.trim() || (attachedFiles.length ? "Summarize the attached file(s)." : "");
+    if (!userText && attachedFiles.length === 0) return;
+
     const chatId = await ensureChatId();
 
-    const userMsg: Msg = { role: "user", content: input.trim() };
+    const userMsg: Msg = { role: "user", content: userText };
     const nextMessages = [...messages, userMsg];
 
     setMessages([...nextMessages, { role: "assistant", content: "" }]);
     autoScrollEnabledRef.current = true;
     scrollToBottom(true);
+
     setInput("");
+
     isStreamingRef.current = true;
     setIsStreaming(true);
 
@@ -377,22 +384,29 @@ export default function Page() {
     abortRef.current = ac;
 
     try {
-      const res = await fetch(`${apiUrl}/v1/chat/stream`, {
+      const fd = new FormData();
+      fd.append("chat_id", chatId);
+      fd.append("model", model);
+      fd.append("temperature", String(getTemperature(model)));
+      fd.append("message", userText);
+
+      fd.append("messages", JSON.stringify(nextMessages));
+
+      for (const f of attachedFiles) fd.append("files", f);
+
+      const res = await fetch(`${apiUrl}/v1/chat/stream_with_files`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
           "X-User-Id": getUserId(),
         },
         signal: ac.signal,
-        body: JSON.stringify({
-          chat_id: chatId,
-          model,
-          messages: nextMessages,
-          temperature: getTemperature(model),
-        }),
+        body: fd,
       });
 
-      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok || !res.body) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
+      }
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder("utf-8");
@@ -413,7 +427,7 @@ export default function Page() {
 
           for (const line of block.split("\n")) {
             if (!line.startsWith("data:")) continue;
-            const payload = line.slice(5);
+            const payload = line.slice(5).trim();
 
             let obj: any;
             try {
@@ -426,8 +440,10 @@ export default function Page() {
               setIsStreaming(false);
               abortRef.current = null;
               isStreamingRef.current = false;
-              scrollToBottom(true);
 
+              setAttachedFiles([]);
+
+              scrollToBottom(true);
               refreshChats().catch(() => { });
               return;
             }
@@ -439,7 +455,7 @@ export default function Page() {
                 if (last?.role === "assistant") {
                   copy[copy.length - 1] = {
                     ...last,
-                    content: last.content + `\n⚠️ ${obj.error}`,
+                    content: (last.content || "") + `\n⚠️ ${obj.error}`,
                   };
                 }
                 return copy;
@@ -456,7 +472,7 @@ export default function Page() {
               if (last?.role === "assistant") {
                 copy[copy.length - 1] = {
                   ...last,
-                  content: last.content + token,
+                  content: (last.content || "") + token,
                 };
               }
               return copy;
@@ -468,10 +484,18 @@ export default function Page() {
       }
     } catch (e: any) {
       if (e?.name !== "AbortError") {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `⚠️ ${String(e)}` },
-        ]);
+        setMessages((prev) => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          if (last?.role === "assistant" && (last.content || "") === "") {
+            copy[copy.length - 1] = {
+              ...last,
+              content: `⚠️ ${String(e?.message || e)}`,
+            };
+            return copy;
+          }
+          return [...copy, { role: "assistant", content: `⚠️ ${String(e?.message || e)}` }];
+        });
       }
     } finally {
       setIsStreaming(false);
@@ -479,6 +503,7 @@ export default function Page() {
       isStreamingRef.current = false;
     }
   }
+
 
   function stop() {
     abortRef.current?.abort();
@@ -850,6 +875,42 @@ export default function Page() {
                 <div className="relative p-[3px] rounded-2xl focus-within:bg-gradient-to-r focus-within:from-blue-500 focus-within:via-indigo-500 focus-within:to-blue-500 transition-all">
                   <div className="rounded-2xl bg-[#2f2f2f]">
                     <div className="px-4 pt-4">
+
+                      {attachedFiles.length > 0 ? (
+                        <div className="px-4 pt-3 flex flex-wrap gap-2">
+                          {attachedFiles.map((f, idx) => (
+                            <div
+                              key={`${f.name}-${idx}`}
+                              className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-gray-200"
+                              title={f.name}
+                            >
+                              <span className="max-w-[220px] truncate">{f.name}</span>
+                              <button
+                                type="button"
+                                className="opacity-80 hover:opacity-100"
+                                onClick={() =>
+                                  setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
+                                }
+                                disabled={isStreaming}
+                                aria-label={`Remove ${f.name}`}
+                                title="Remove"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+
+                          <button
+                            type="button"
+                            className="ml-1 text-xs text-gray-300/80 hover:text-gray-200 underline underline-offset-2"
+                            onClick={() => setAttachedFiles([])}
+                            disabled={isStreaming}
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      ) : null}
+
                       <textarea
                         className="w-full resize-none bg-transparent outline-none text-gray-100 placeholder:text-gray-400 text-sm leading-relaxed"
                         placeholder="Send a message…"
@@ -874,7 +935,16 @@ export default function Page() {
                             type="file"
                             multiple
                             className="hidden"
-                            onChange={() => { }}
+                            onChange={(e) => {
+                              const files = Array.from(e.target.files || []);
+                              if (!files.length) return;
+
+                              // append to current selection (so user can add more)
+                              setAttachedFiles((prev) => [...prev, ...files]);
+
+                              // allow selecting same file again later
+                              e.currentTarget.value = "";
+                            }}
                             disabled={isStreaming}
                           />
                         </label>
@@ -889,27 +959,6 @@ export default function Page() {
                           }}
                           disabled={isStreaming}
                         />
-
-                        {/* <select
-
-                          className="rounded-lg border border-white/10 bg-[#262626] px-3 py-2 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-white/20"
-                          value={model}
-                          onChange={(e) => setModel(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              if (isStreaming) stop();
-                              else send();
-                            }
-                          }}
-                          disabled={isStreaming}
-                        >
-                          {modelChoices.map((opt) => (
-                            <option key={opt.value} value={opt.value} disabled={opt.disabled}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select> */}
 
                       </div>
 

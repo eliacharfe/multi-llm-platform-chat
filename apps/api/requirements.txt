@@ -8,3 +8,4 @@ anthropic
 google-genai
 pypdf
 protobuf
+python-multipart
