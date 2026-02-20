@@ -5,6 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import CopyButton from "@/components/ui/CopyButton";
+import ConfirmDialog from "@/components/ui/ConfirmDialog";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -214,6 +215,40 @@ export default function Page() {
   const autoScrollEnabledRef = useRef(true);
   const isStreamingRef = useRef(false);
 
+  // Confirm dialog
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+  const confirmActionRef = useRef<null | (() => Promise<void> | void)>(null);
+
+  const [confirmTitle, setConfirmTitle] = useState("Confirm");
+  const [confirmMessage, setConfirmMessage] = useState("");
+  const [confirmVariant, setConfirmVariant] = useState<"default" | "danger">("default");
+  const [confirmText, setConfirmText] = useState("OK");
+  const [cancelText, setCancelText] = useState("Cancel");
+
+  function openConfirm(opts: {
+    title: string;
+    message: string;
+    variant?: "default" | "danger";
+    confirmText?: string;
+    cancelText?: string;
+    onConfirm: () => Promise<void> | void;
+  }) {
+    setConfirmTitle(opts.title);
+    setConfirmMessage(opts.message);
+    setConfirmVariant(opts.variant ?? "default");
+    setConfirmText(opts.confirmText ?? "OK");
+    setCancelText(opts.cancelText ?? "Cancel");
+    confirmActionRef.current = opts.onConfirm;
+    setConfirmOpen(true);
+  }
+
+  function closeConfirm() {
+    if (confirmLoading) return;
+    setConfirmOpen(false);
+    confirmActionRef.current = null;
+  }
+
   const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
   const canSend = useMemo(
     () => input.trim().length > 0 && !isStreaming,
@@ -227,7 +262,7 @@ export default function Page() {
   }, [chats, chatSearch]);
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 900px)"); // tweak breakpoint if you want
+    const mq = window.matchMedia("(max-width: 900px)");
     const apply = () => setIsSidebarCollapsed(mq.matches);
 
     apply();
@@ -493,7 +528,7 @@ export default function Page() {
         {/* LEFT SIDEBAR */}
         <aside
           className={[
-            "border-r border-white/10 bg-[#2b2b2b] flex flex-col overflow-hidden transition-all duration-200 ease-out",
+            "h-full min-h-0 border-r border-white/10 bg-[#2b2b2b] flex flex-col overflow-hidden transition-all duration-200 ease-out",
             isSidebarCollapsed ? "w-[56px]" : "w-[250px] sm:w-[270px] lg:w-[280px] xl:w-[290px]",
           ].join(" ")}
         >
@@ -543,28 +578,31 @@ export default function Page() {
 
           {/* Sidebar content (full height column) */}
           {!isSidebarCollapsed && (
-            <div className="flex-1 p-4 pt-0 flex flex-col gap-4">
-              <button
-                className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left"
-                onClick={newDraftChat}
-              >
-                + New Chat
-              </button>
-
-              <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 flex items-center gap-2">
-                <input
-                  className="w-full bg-transparent outline-none text-sm placeholder:text-gray-400"
-                  placeholder="Search chats..."
-                  value={chatSearch}
-                  onChange={(e) => setChatSearch(e.target.value)}
-                />
-                <button className="opacity-70 hover:opacity-100 transition" title="Search">
-                  {/* your search icon */}
+            <div className="flex-1 min-h-0 px-4 pb-4 pt-0 flex flex-col">
+              {/* Top actions */}
+              <div className="pt-2 flex flex-col gap-4 shrink-0">
+                <button
+                  className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left"
+                  onClick={newDraftChat}
+                >
+                  + New Chat
                 </button>
+
+                <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 flex items-center gap-2">
+                  <input
+                    className="w-full bg-transparent outline-none text-sm placeholder:text-gray-400"
+                    placeholder="Search chats..."
+                    value={chatSearch}
+                    onChange={(e) => setChatSearch(e.target.value)}
+                  />
+                  <button className="opacity-70 hover:opacity-100 transition" title="Search">
+                    {/* your search icon */}
+                  </button>
+                </div>
               </div>
 
-              {/* Chats list */}
-              <div className="flex-1 overflow-y-auto pr-1 -mr-1">
+              {/* Chats list (SCROLLS) */}
+              <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 mt-4">
                 {isSidebarLoading && chats.length === 0 ? (
                   <div className="text-xs text-gray-400 px-2 py-2">Loading chats…</div>
                 ) : filteredChats.length === 0 ? (
@@ -573,6 +611,7 @@ export default function Page() {
                   <div className="flex flex-col gap-1">
                     {filteredChats.map((c) => {
                       const active = c.id === activeChatId;
+
                       return (
                         <div
                           key={c.id}
@@ -592,23 +631,38 @@ export default function Page() {
                                 {formatChatTime(c.updated_at)}
                               </div>
                             </div>
-                            <div className="mt-1 text-[11px] text-gray-400 truncate">{c.model}</div>
+                            <div className="mt-1 text-[11px] text-gray-400 truncate">
+                              {c.model}
+                            </div>
                           </button>
 
                           <button
-                            onClick={async (e) => {
+                            type="button"
+                            onClick={(e) => {
                               e.stopPropagation();
-                              if (!confirm("Delete this chat?")) return;
 
-                              await api(`/v1/chats/${c.id}`, { method: "DELETE" });
+                              const id = c.id; // capture NOW
 
-                              if (activeChatId === c.id) {
-                                setActiveChatId(null);
-                                setMessages([]);
-                              }
-                              await refreshChats();
+                              openConfirm({
+                                title: "Delete chat?",
+                                message: "This will permanently delete the chat and its messages.",
+                                variant: "danger",
+                                confirmText: "Delete",
+                                cancelText: "Cancel",
+                                onConfirm: async () => {
+                                  await api(`/v1/chats/${id}`, { method: "DELETE" });
+
+                                  if (activeChatId === id) {
+                                    setActiveChatId(null);
+                                    setMessages([]);
+                                  }
+
+                                  await refreshChats();
+                                  closeConfirm();
+                                },
+                              });
                             }}
-                            className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-400"
+                            className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-400"
                             title="Delete chat"
                           >
                             🗑️
@@ -620,7 +674,8 @@ export default function Page() {
                 )}
               </div>
 
-              <div className="mt-auto">
+              {/* Footer (ALWAYS VISIBLE) */}
+              <div className="shrink-0 pt-4">
                 <button className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center gap-2">
                   <span>Eliachar Feig</span>
                 </button>
@@ -793,7 +848,6 @@ export default function Page() {
               <div className="mx-auto max-w-3xl">
                 <div className="relative p-[3px] rounded-2xl focus-within:bg-gradient-to-r focus-within:from-blue-500 focus-within:via-indigo-500 focus-within:to-blue-500 transition-all">
                   <div className="rounded-2xl bg-[#2f2f2f]">
-                    {/* <div className="rounded-2xl border border-white/10 bg-[#2f2f2f] shadow-xl transition-all focus-within:border-blue-600 focus-within:border-[4px]"> */}
                     <div className="px-4 pt-4">
                       <textarea
                         className="w-full resize-none bg-transparent outline-none text-gray-100 placeholder:text-gray-400 text-sm leading-relaxed"
@@ -894,6 +948,23 @@ export default function Page() {
           </div>
         </section>
       </div>
+
+
+      <ConfirmDialog
+        open={confirmOpen}
+        title={confirmTitle}
+        message={confirmMessage}
+        variant={confirmVariant}
+        confirmText={confirmText}
+        cancelText={cancelText}
+        loading={confirmLoading}
+        onClose={closeConfirm}
+        onConfirm={async () => {
+          const fn = confirmActionRef.current;
+          if (!fn) return;
+          await fn();
+        }}
+      />
     </main>
   );
 }
