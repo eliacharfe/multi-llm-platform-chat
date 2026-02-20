@@ -1,4 +1,5 @@
 
+// web/src/app/page.tsx
 "use client";
 
 import React, { useMemo, useRef, useState } from "react";
@@ -7,8 +8,146 @@ import remarkGfm from "remark-gfm";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
+// =========================
+// Models / Providers (ported from Gradio)
+// =========================
+
+const MODEL_OPTIONS = [
+  "openai:gpt-5-nano",
+  "openai:gpt-5-mini",
+  "openai:gpt-5",
+  "openrouter:deepseek/deepseek-chat",
+  "openrouter:x-ai/grok-4.1-fast",
+  "openrouter:openai/gpt-4o-mini",
+  "openrouter:mistralai/mistral-large-2512",
+  "groq:llama-3.1-8b-instant",
+  "groq:llama-3.3-70b-versatile",
+  "anthropic:claude-sonnet-4-6",
+  "anthropic:claude-opus-4-6",
+  "anthropic:claude-haiku-4-5",
+  "gemini:models/gemini-2.5-flash-lite",
+  "gemini:models/gemini-2.5-flash",
+] as const;
+
+const DEFAULT_TEMPERATURE = 0.7;
+
+const TEMPERATURE_BY_MODEL: Record<string, number> = {
+  "openrouter:deepseek/deepseek-chat": 0.7,
+  "openrouter:x-ai/grok-4.1-fast": 0.7,
+  "openrouter:openai/gpt-4o-mini": 0.7,
+  "openrouter:mistralai/mistral-large-2512": 0.6,
+  "groq:llama-3.1-8b-instant": 0.7,
+  "groq:llama-3.2-3b": 0.6,
+  "groq:llama-3.3-70b-versatile": 0.7,
+  "anthropic:claude-sonnet-4-6": 0.6,
+  "anthropic:claude-opus-4-6": 0.6,
+  "anthropic:claude-haiku-4-5": 0.7,
+  "gemini:models/gemini-2.5-flash-lite": 0.7,
+  "gemini:models/gemini-2.5-flash": 0.7,
+};
+
+const PROVIDER_TITLES: Record<string, string> = {
+  openai: "OpenAI",
+  openrouter: "OpenRouter",
+  groq: "Groq",
+  anthropic: "Anthropic",
+  gemini: "Gemini",
+  nebius: "Nebius",
+};
+
+const PROVIDER_ICONS: Record<string, string> = {
+  openai: "🟢",
+  openrouter: "⚡",
+  groq: "🟠",
+  anthropic: "🟣",
+  gemini: "🔵",
+  nebius: "🟤",
+};
+
+type SelectOpt = { value: string; label: string; disabled?: boolean };
+
+function getTemperature(providerModel: string) {
+  const t = TEMPERATURE_BY_MODEL[providerModel];
+  return typeof t === "number" ? t : DEFAULT_TEMPERATURE;
+}
+
+function prettifyModelName(modelName: string) {
+  const raw = (modelName || "").trim().split("/").pop() || modelName;
+  const spaced = raw.replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
+
+  return spaced
+    .split(" ")
+    .map((w) => {
+      const lw = w.toLowerCase();
+      if (lw === "gpt") return "GPT";
+      if (lw === "llama") return "Llama";
+      if (lw === "claude") return "Claude";
+      if (lw === "gemini") return "Gemini";
+      return /^[0-9.]+$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1);
+    })
+    .join(" ");
+}
+
+function thinkingText(providerModel: string) {
+  const [, modelName = ""] = providerModel.split(":", 2);
+  const pretty = prettifyModelName(modelName);
+  return `${pretty} is thinking about it...`;
+}
+
+function buildSectionedChoices(models: readonly string[]): SelectOpt[] {
+  const grouped = new Map<string, string[]>();
+
+  for (const pm of models) {
+    const [provider] = pm.split(":", 1);
+    if (!provider) continue;
+    grouped.set(provider, [...(grouped.get(provider) || []), pm]);
+  }
+
+  const order = ["openai", "openrouter", "groq", "anthropic", "gemini", "nebius"];
+  const out: SelectOpt[] = [];
+
+  for (const provider of order) {
+    const items = grouped.get(provider);
+    if (!items?.length) continue;
+
+    const icon = PROVIDER_ICONS[provider] ?? "•";
+    const title = PROVIDER_TITLES[provider] ?? provider;
+
+    out.push({
+      value: `__header__:${provider}`,
+      label: `--- ${icon} ${title} ${icon} ---`,
+      disabled: true,
+    });
+
+    for (const pm of items) {
+      const [, modelName = ""] = pm.split(":", 2);
+      out.push({
+        value: pm,
+        label: `${icon} ${modelName}`,
+      });
+    }
+  }
+
+  return out;
+}
+
+function Spinner() {
+  return (
+    <span
+      className="inline-block h-4 w-4 rounded-full border-2 border-white/20 border-t-white/70 animate-spin"
+      aria-label="Loading"
+    />
+  );
+}
+
+// =========================
+// Page
+// =========================
+
 export default function Page() {
-  const [model, setModel] = useState("openai:gpt-5-mini");
+  const DEFAULT_MODEL = "openai:gpt-5-mini";
+
+  const [model, setModel] = useState(DEFAULT_MODEL);
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Msg[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -19,6 +158,8 @@ export default function Page() {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const autoScrollEnabledRef = useRef(true);
   const isStreamingRef = useRef(false);
+
+  const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
 
   const canSend = useMemo(
     () => input.trim().length > 0 && !isStreaming,
@@ -31,6 +172,7 @@ export default function Page() {
     const userMsg: Msg = { role: "user", content: input.trim() };
     const nextMessages = [...messages, userMsg];
 
+    // keep the final assistant message as the "stream target"
     setMessages([...nextMessages, { role: "assistant", content: "" }]);
     setInput("");
     autoScrollEnabledRef.current = true;
@@ -48,7 +190,7 @@ export default function Page() {
         body: JSON.stringify({
           model,
           messages: nextMessages,
-          temperature: 0.7,
+          temperature: getTemperature(model),
         }),
       });
 
@@ -81,7 +223,6 @@ export default function Page() {
             } catch {
               continue;
             }
-
 
             if (obj.done) {
               setIsStreaming(false);
@@ -168,7 +309,10 @@ export default function Page() {
               className="w-full bg-transparent outline-none text-sm placeholder:text-gray-400"
               placeholder="Explain quantum me..."
             />
-            <button className="opacity-70 hover:opacity-100 transition" title="Clear">
+            <button
+              className="opacity-70 hover:opacity-100 transition"
+              title="Clear"
+            >
               🗑️
             </button>
           </div>
@@ -182,20 +326,19 @@ export default function Page() {
 
         {/* MAIN CHAT AREA */}
         <section className="flex-1 relative">
-
-          {/* chat scroller */}
           <div className="h-full flex flex-col">
+            {/* chat scroller */}
             <div
               ref={scrollRef}
               className="flex-1 overflow-y-auto px-6 pt-28 pb-10"
               onScroll={() => {
                 const el = scrollRef.current;
                 if (!el) return;
-
                 if (!isStreamingRef.current) return;
 
                 const threshold = 80;
-                const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+                const distanceFromBottom =
+                  el.scrollHeight - el.scrollTop - el.clientHeight;
 
                 if (distanceFromBottom > threshold) {
                   autoScrollEnabledRef.current = false;
@@ -217,7 +360,8 @@ export default function Page() {
                         return (
                           <div
                             key={idx}
-                            className={`flex ${isUser ? "justify-end" : "justify-start"}`}
+                            className={`flex ${isUser ? "justify-end" : "justify-start"
+                              }`}
                           >
                             {isUser ? (
                               // ✅ USER = bubble
@@ -226,44 +370,63 @@ export default function Page() {
                               </div>
                             ) : (
                               // ✅ ASSISTANT = plain (no bubble)
-
                               <div className="w-full max-w-3xl whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
-                                <ReactMarkdown
-                                  remarkPlugins={[remarkGfm]}
-                                  components={{
-                                    code({ className, children, ...props }) {
-                                      const isBlock = /language-\w+/.test(className || "");
-                                      if (isBlock) {
-                                        return (
-                                          <pre className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 overflow-x-auto text-sm">
-                                            <code className={className} {...props}>
-                                              {children}
-                                            </code>
-                                          </pre>
-                                        );
-                                      }
+                                {/* ✅ loader row while waiting for first tokens */}
+                                {isStreaming &&
+                                  idx === messages.length - 1 &&
+                                  (m.content?.length ?? 0) === 0 && (
+                                    <div className="flex items-center gap-3 text-gray-400">
+                                      <Spinner />
+                                      <span>{thinkingText(model)}</span>
+                                    </div>
+                                  )}
 
-                                      // inline code
-                                      return (
-                                        <code
-                                          className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
-                                          {...props}
-                                        >
-                                          {children}
-                                        </code>
-                                      );
-                                    },
-                                  }}
-                                >
-                                  {m.content}
-                                </ReactMarkdown>
+                                {/* normal markdown */}
+                                {m.content?.length ? (
+                                  <ReactMarkdown
+                                    remarkPlugins={[remarkGfm]}
+                                    components={{
+                                      code({
+                                        className,
+                                        children,
+                                        ...props
+                                      }) {
+                                        const isBlock =
+                                          /language-\w+/.test(className || "");
+                                        if (isBlock) {
+                                          return (
+                                            <pre className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 overflow-x-auto text-sm">
+                                              <code
+                                                className={className}
+                                                {...props}
+                                              >
+                                                {children}
+                                              </code>
+                                            </pre>
+                                          );
+                                        }
+
+                                        // inline code
+                                        return (
+                                          <code
+                                            className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
+                                            {...props}
+                                          >
+                                            {children}
+                                          </code>
+                                        );
+                                      },
+                                    }}
+                                  >
+                                    {m.content}
+                                  </ReactMarkdown>
+                                ) : null}
                               </div>
                             )}
                           </div>
                         );
                       })}
                   </div>
-
                 )}
               </div>
             </div>
@@ -312,17 +475,22 @@ export default function Page() {
                       <select
                         className="rounded-lg border border-white/10 bg-[#262626] px-3 py-2 text-xs text-gray-200 focus:outline-none focus:ring-1 focus:ring-white/20"
                         value={model}
-                        onChange={(e) => setModel(e.target.value)}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          if (v.startsWith("__header__:")) return;
+                          setModel(v);
+                        }}
                         disabled={isStreaming}
                       >
-                        <option value="openai:gpt-5-mini">OpenAI: GPT-5-mini</option>
-                        <option value="openai:gpt-5">OpenAI: GPT-5</option>
-                        <option value="openrouter:deepseek/deepseek-chat">
-                          OpenRouter: DeepSeek Chat
-                        </option>
-                        <option value="groq:llama-3.1-8b-instant">
-                          Groq: Llama 3.1 8B Instant
-                        </option>
+                        {modelChoices.map((opt) => (
+                          <option
+                            key={opt.value}
+                            value={opt.value}
+                            disabled={opt.disabled}
+                          >
+                            {opt.label}
+                          </option>
+                        ))}
                       </select>
 
                       {/* stop button */}
@@ -358,5 +526,4 @@ export default function Page() {
       </div>
     </main>
   );
-
 }
