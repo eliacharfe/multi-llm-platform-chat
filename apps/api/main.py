@@ -10,6 +10,7 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi import status
 from pydantic import BaseModel
 
 import asyncio
@@ -17,7 +18,7 @@ import time
 from datetime import datetime
 from fastapi import Header, HTTPException
 
-from sqlalchemy import select, desc
+from sqlalchemy import select, desc, delete
 from sqlalchemy.orm import selectinload
 
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
@@ -316,6 +317,32 @@ async def list_chats(x_user_id: str | None = Header(default=None)):
             ]
         )
 
+
+@app.delete("/v1/chats/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_chat(chat_id: str, x_user_id: str | None = Header(default=None)):
+    user_id = require_user_id(x_user_id)
+
+    async with SessionLocal() as session:
+        # Ensure chat belongs to this user
+        chat = (await session.execute(
+            select(ChatRow).where(ChatRow.id == chat_id, ChatRow.user_id == user_id)
+        )).scalars().first()
+
+        if not chat:
+            raise HTTPException(404, "Chat not found")
+
+        # 1) delete messages (no cascade)
+        await session.execute(
+            delete(MessageRow).where(MessageRow.chat_id == chat_id)
+        )
+
+        # 2) delete the chat
+        await session.delete(chat)
+
+        await session.commit()
+
+    return
+    
 
 @app.get("/v1/chats/{chat_id}", response_model=ChatWithMessagesResponse)
 async def get_chat(chat_id: str, x_user_id: str | None = Header(default=None)):

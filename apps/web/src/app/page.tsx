@@ -181,7 +181,6 @@ function formatChatTime(iso: string) {
   }
 }
 
-// X-User-Id (required by your BE)
 function getUserId(): string {
   if (typeof window === "undefined") return "dev-user";
   const key = "mlc_x_user_id";
@@ -239,7 +238,13 @@ export default function Page() {
       const txt = await res.text().catch(() => "");
       throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
     }
-    return (await res.json()) as T;
+
+    if (res.status === 204) return undefined as T;
+
+    const text = await res.text();
+    if (!text) return undefined as T;
+
+    return JSON.parse(text) as T;
   }
 
   async function refreshChats() {
@@ -273,7 +278,7 @@ export default function Page() {
 
     const detail = await api<any>(`/v1/chats/${chatId}`, { method: "GET" });
 
-    const chat = detail?.chat ?? detail; // ✅ supports both shapes
+    const chat = detail?.chat ?? detail;
 
     console.log("openChat detail:", detail);
 
@@ -371,7 +376,6 @@ export default function Page() {
               isStreamingRef.current = false;
               scrollToBottom(true);
 
-              // refresh sidebar order/title after each assistant message
               refreshChats().catch(() => { });
               return;
             }
@@ -491,6 +495,62 @@ export default function Page() {
               <div className="flex flex-col gap-1">
                 {filteredChats.map((c) => {
                   const active = c.id === activeChatId;
+
+                  return (
+                    <div
+                      key={c.id}
+                      className={[
+                        "group w-full text-left rounded-lg px-3 py-2 border transition relative",
+                        active
+                          ? "bg-white/10 border-white/15"
+                          : "bg-black/10 border-white/10 hover:bg-white/10 hover:border-white/15",
+                      ].join(" ")}
+                    >
+                      {/* Clickable area */}
+                      <button
+                        onClick={() => openChat(c.id)}
+                        className="w-full text-left"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm text-gray-100 truncate">
+                            {c.title || "New chat"}
+                          </div>
+                          <div className="text-[11px] text-gray-400 shrink-0">
+                            {formatChatTime(c.updated_at)}
+                          </div>
+                        </div>
+                        <div className="mt-1 text-[11px] text-gray-400 truncate">
+                          {c.model}
+                        </div>
+                      </button>
+
+                      {/* Delete button */}
+                      <button
+                        onClick={async (e) => {
+                          e.stopPropagation();
+                          if (!confirm("Delete this chat?")) return;
+
+                          await api(`/v1/chats/${c.id}`, {
+                            method: "DELETE",
+                          });
+
+                          if (activeChatId === c.id) {
+                            setActiveChatId(null);
+                            setMessages([]);
+                          }
+
+                          await refreshChats();
+                        }}
+                        className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-400"
+                        title="Delete chat"
+                      >
+                        🗑️
+                      </button>
+                    </div>
+                  );
+                })}
+                {/* {filteredChats.map((c) => {
+                  const active = c.id === activeChatId;
                   return (
                     <button
                       key={c.id}
@@ -516,7 +576,7 @@ export default function Page() {
                       </div>
                     </button>
                   );
-                })}
+                })} */}
               </div>
             )}
           </div>
