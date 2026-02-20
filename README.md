@@ -6,6 +6,15 @@
 
 A full-stack **multi-provider AI chat application** that allows you to interact with multiple LLM providers from a single unified interface.
 
+---
+
+## 🌐 Live Demo
+
+**Available on:**  
+👉 https://multi-llm-platform-premium.vercel.app/
+
+---
+
 This project combines:
 
 - ⚡ A streaming FastAPI backend (Dockerized)
