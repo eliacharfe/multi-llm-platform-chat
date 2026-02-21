@@ -1238,7 +1238,27 @@ export default function Page() {
                                 title={f.name}
                               >
                                 <span className="max-w-[220px] truncate">{f.name}</span>
-                                <button
+                                <input
+                                  type="file"
+                                  multiple
+                                  accept={[
+                                    ".txt", ".md", ".json", ".csv", ".log",
+                                    ".yaml", ".yml",
+                                    ".dart", ".py", ".js", ".ts", ".tsx",
+                                    ".html", ".css", ".xml",
+                                    ".swift",
+                                    ".pdf",
+                                  ].join(",")}
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    const files = Array.from(e.target.files || []);
+                                    if (!files.length) return;
+                                    setAttachedFiles((prev) => [...prev, ...files]);
+                                    e.currentTarget.value = "";
+                                  }}
+                                  disabled={isStreaming}
+                                />
+                                {/* <button
                                   type="button"
                                   className="opacity-80 hover:opacity-100"
                                   onClick={() =>
@@ -1249,7 +1269,7 @@ export default function Page() {
                                   title="Remove"
                                 >
                                   ✕
-                                </button>
+                                </button> */}
                               </div>
                             ))}
 
