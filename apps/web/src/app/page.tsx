@@ -997,17 +997,17 @@ export default function Page() {
 
 
         {/* MAIN CHAT AREA */}
-        <section className="flex-1 relative">
+        <section className="flex-1 relative min-w-0">
           <div className="h-full flex flex-col">
             {/* chat scroller */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-6 pt-8 pb-[calc(220px+env(safe-area-inset-bottom))]"
+              className="flex-1 overflow-y-auto px-3 sm:px-6 pt-6 sm:pt-8 pb-[calc(220px+env(safe-area-inset-bottom))]"
               onScroll={() => {
                 autoScrollEnabledRef.current = isNearBottom(140);
               }}
             >
-              <div className="mx-auto max-w-3xl">
+              <div className="mx-auto max-w-3xl min-w-0">
                 {messages.length === 0 ? (
                   <div className="flex items-center justify-center py-20">
                     <div className="w-full max-w-3xl px-2">
@@ -1112,11 +1112,15 @@ export default function Page() {
                                   dir={dir}
                                   style={{ unicodeBidi: isRTL ? "plaintext" : "normal" }}
                                   className={[
-                                    "text-sm leading-relaxed text-gray-100",
+                                    "text-sm leading-relaxed text-gray-100 min-w-0",
+                                    "wrap-anywhere",
                                     isRTL ? "text-right" : "text-left",
                                     "[&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1",
                                     "[&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:mt-4 [&_h3]:mb-2",
-                                    "[&_pre]:my-4",
+                                    "[&_pre]:my-4 [&_pre]:max-w-full [&_pre]:overflow-x-auto",
+                                    "[&_code]:max-w-full",
+                                    "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto",
+                                    "[&_img]:max-w-full",
                                   ].join(" ")}
                                 >
                                   {isStreaming &&
@@ -1145,7 +1149,8 @@ export default function Page() {
                                               : raw;
 
                                             return (
-                                              <div className="relative my-3" dir="ltr">
+                                              // <div className="relative my-3" dir="ltr">
+                                              <div className="relative my-3 max-w-full min-w-0" dir="ltr">
                                                 <div className="absolute right-2 top-2 flex items-center gap-2">
                                                   {lang && (
                                                     <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
@@ -1161,7 +1166,7 @@ export default function Page() {
 
                                                 <pre
                                                   dir="ltr"
-                                                  className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto text-sm"
+                                                  className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto max-w-full text-sm"
                                                 >
                                                   <code
                                                     className={className}
@@ -1190,11 +1195,13 @@ export default function Page() {
                                   ) : null}
                                 </div>
 
-                                {isAssistant && (m.content?.length ?? 0) > 0 ? (
-                                  <div className={["mt-2 flex", isRTL ? "justify-end" : "justify-start"].join(" ")}>
-                                    <CopyButton text={m.content} />
-                                  </div>
-                                ) : null}
+                                {
+                                  isAssistant && (m.content?.length ?? 0) > 0 ? (
+                                    <div className={["mt-2 flex", isRTL ? "justify-end" : "justify-start"].join(" ")}>
+                                      <CopyButton text={m.content} />
+                                    </div>
+                                  ) : null
+                                }
                               </div>
                             )}
                           </div>
@@ -1389,8 +1396,8 @@ export default function Page() {
               </div>
             </div>
           </div>
-        </section>
-      </div>
+        </section >
+      </div >
 
 
       <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
