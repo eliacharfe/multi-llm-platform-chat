@@ -271,47 +271,57 @@ def build_gemini_prompt(messages: List[ChatMsg]) -> str:
 
 def openai_stream(provider: str, model_name: str, req: ChatRequest):
     client = get_openai_compatible_client(provider)
+    provider_model = req.model
+    temp = get_temperature(provider_model, req.temperature)
+    unsupported = UNSUPPORTED_PARAMS_BY_MODEL.get(model_name, set())
 
-    if provider == "openai" and model_name.startswith("gpt-5"):
+    is_gpt5 = provider == "openai" and model_name.startswith("gpt-5")
+
+    print(f"[openai_stream] provider={provider}, model={model_name}, is_gpt5={is_gpt5}, temp={temp}")
+    print(f"[openai_stream] messages count: {len(req.messages or [])}")
+    for i, m in enumerate(req.messages or []):
+        print(f"[openai_stream]   msg[{i}] role={m.role}, len={len(m.content or '')}ch")
+
+    if is_gpt5:
         input_msgs = [{"role": m.role, "content": m.content or ""} for m in (req.messages or [])]
-        create_kwargs: Dict[str, Any] = {
-            "model": model_name,
-            "input": input_msgs,
-            "stream": True,
-        }
+        print(f"[openai_stream:gpt5] calling responses.create with {len(input_msgs)} msgs")
 
-        stream = None
-        for tok_kw in ("max_output_tokens", "max_completion_tokens", "max_tokens"):
-            try:
-                stream = client.responses.create(**{**create_kwargs, tok_kw: 2048})
-                break
-            except TypeError:
-                continue
-        if stream is None:
-            stream = client.responses.create(**create_kwargs)
+        try:
+            stream = client.responses.create(
+                model=model_name,
+                input=input_msgs,
+                stream=True,
+                # Remove max_output_tokens entirely for now to rule it out
+            )
+            print(f"[openai_stream:gpt5] stream created OK: {type(stream)}")
+        except Exception as e:
+            import traceback
+            print(f"[openai_stream:gpt5] ❌ responses.create failed: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            raise
 
+        event_count = 0
+        delta_count = 0
         for event in stream:
-            et = getattr(event, "type", None)
+            event_count += 1
+            event_type = getattr(event, "type", None)
 
-            if et == "response.output_text.delta":
+            # Print ALL events unconditionally so we see everything
+            print(f"[openai_stream:gpt5] event[{event_count}] type={event_type!r} raw={repr(event)[:300]}")
+
+            if event_type == "response.output_text.delta":
                 delta = getattr(event, "delta", None)
+                print(f"[openai_stream:gpt5]   delta={repr(delta)[:80]}")
                 if isinstance(delta, str) and delta:
+                    delta_count += 1
                     yield sse({"t": delta})
 
-            elif et in ("response.output_text.done", "response.done"):
-                break
-
+        print(f"[openai_stream:gpt5] ✅ stream done — {event_count} events, {delta_count} deltas yielded")
         yield sse({"done": True})
         return
 
-    # ✅ everyone else: keep your existing chat.completions streaming
-    debug = model_name.startswith("gpt-5")
-    if debug:
-        print("[openai_stream] provider=", provider, "model_name=", model_name)
-
-    provider_model = req.model
-    temp = get_temperature(provider_model, req.temperature)
-    unsupported = UNSUPPORTED_PARAMS_BY_MODEL.get(model_name, set())
+    # All other providers: chat completions API
+    print(f"[openai_stream] using chat.completions API")
 
     kwargs: Dict[str, Any] = {
         "model": model_name,
@@ -323,79 +333,52 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest):
         hdrs = openrouter_extra_headers()
         if hdrs:
             kwargs["extra_headers"] = hdrs
+            print(f"[openai_stream] openrouter extra_headers: {hdrs}")
 
     if "temperature" not in unsupported:
         kwargs["temperature"] = temp
-
-    def _try_create(extra: Dict[str, Any]):
-        return client.chat.completions.create(**extra)
-
-    base = dict(kwargs)
+    else:
+        print(f"[openai_stream] ⚠️ temperature skipped (unsupported for {model_name})")
 
     try:
-        stream = _try_create({**base, "max_completion_tokens": 2048})
-    except TypeError:
-        stream = _try_create({**base, "max_tokens": 2048})
+        stream = client.chat.completions.create(**kwargs, max_completion_tokens=2048)
+        print(f"[openai_stream] stream created with max_completion_tokens=2048")
+    except TypeError as e:
+        print(f"[openai_stream] max_completion_tokens failed ({e}), retrying with max_tokens")
+        stream = client.chat.completions.create(**kwargs, max_tokens=2048)
+        print(f"[openai_stream] stream created with max_tokens=2048")
+    except Exception as e:
+        import traceback
+        print(f"[openai_stream] ❌ chat.completions.create failed: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        raise
 
+    event_count = 0
+    delta_count = 0
     for event in stream:
-        choice = event.choices[0]
+        event_count += 1
+        choice = event.choices[0] if event.choices else None
+        if not choice:
+            print(f"[openai_stream] ⚠️ event[{event_count}] has no choices: {event!r}")
+            continue
+
+        finish_reason = getattr(choice, "finish_reason", None)
         delta_obj = getattr(choice, "delta", None)
         delta = _extract_delta_text(delta_obj)
+
+        if event_count <= 3:
+            print(f"[openai_stream] event[{event_count}] delta_obj={delta_obj!r}, extracted={delta!r}, finish={finish_reason!r}")
+
+        if finish_reason and finish_reason != "stop":
+            print(f"[openai_stream] finish_reason={finish_reason!r} at event {event_count}")
+
         if delta:
+            delta_count += 1
             yield sse({"t": delta})
 
+    print(f"[openai_stream] ✅ stream done — {event_count} events, {delta_count} deltas yielded")
     yield sse({"done": True})
 
-# def openai_stream(provider: str, model_name: str, req: ChatRequest):
-    client = get_openai_compatible_client(provider)
-
-    debug = model_name.startswith("gpt-5")
-    if debug:
-        print("[openai_stream] provider=", provider, "model_name=", model_name)
-
-    provider_model = req.model
-    temp = get_temperature(provider_model, req.temperature)
-    unsupported = UNSUPPORTED_PARAMS_BY_MODEL.get(model_name, set())
-
-    kwargs: Dict[str, Any] = {
-        "model": model_name,
-        "messages": sanitize_openai_messages(req.messages),
-        "stream": True,
-    }
-
-    if provider == "openrouter":
-        hdrs = openrouter_extra_headers()
-        if hdrs:
-            kwargs["extra_headers"] = hdrs
-
-    if "temperature" not in unsupported:
-        kwargs["temperature"] = temp
-
-    def _try_create(extra: Dict[str, Any]):
-        return client.chat.completions.create(**extra)
-
-    base = dict(kwargs)
-
-    try:
-        stream = _try_create({**base, "max_completion_tokens": 2048})
-    except TypeError:
-        stream = _try_create({**base, "max_tokens": 2048})
-
-    i = 0
-    for event in stream:
-        choice = event.choices[0]
-        delta_obj = getattr(choice, "delta", None)
-
-        delta = _extract_delta_text(delta_obj)
-
-        if debug:
-            print("[openai_stream] delta_obj=", delta_obj)
-            print("[openai_stream] extracted delta=", delta)
-            print("[openai_stream] finish_reason=", getattr(choice, "finish_reason", None))
-        if delta:
-            yield sse({"t": delta})
-
-    yield sse({"done": True})
 
 def _extract_delta_text(delta_obj: Any) -> str | None:
     if not delta_obj:
@@ -764,6 +747,8 @@ async def chat_stream_with_files(
                 )).scalars().first()
                 if msg:
                     msg.content = (msg.content or "") + chunk
+                else:
+                    print(f"[flush] ⚠️ assistant row {assistant_id} not found in DB!")
 
                 chat2 = (await session.execute(
                     select(ChatRow).where(ChatRow.id == chat_id)
@@ -772,6 +757,7 @@ async def chat_stream_with_files(
                     chat2.updated_at = utcnow()
 
                 await session.commit()
+                print(f"[flush] ✅ flushed {len(chunk)} chars to DB (assistant_id={assistant_id})")
 
         try:
             async with SessionLocal() as session:
@@ -781,24 +767,37 @@ async def chat_stream_with_files(
                     .options(selectinload(ChatRow.messages))
                 )).scalars().first()
 
-                history = [ChatMsg(role=m.role, content=m.content) for m in (chat.messages if chat else [])]
+                if not chat:
+                    print(f"[gen] ❌ chat {chat_id} not found for user {user_id}")
+                    yield sse({"error": "Chat not found"})
+                    yield sse({"done": True})
+                    return
 
-                while history and history[-1].role == "assistant" and not (history[-1].content or "").strip():
-                    history.pop()
+                raw_history = [
+                    ChatMsg(role=m.role, content=m.content)
+                    for m in chat.messages
+                    if not (m.role == "assistant" and not (m.content or "").strip())
+                ]
 
-                history = [m for m in history if not (m.role == "assistant" and not (m.content or "").strip())]
+                print(f"[gen] raw_history ({len(raw_history)} msgs): "
+                    + ", ".join(f"{m.role}:{len(m.content)}ch" for m in raw_history))
 
-                if not history or history[-1].role != "user":
-                    history.append(ChatMsg(role="user", content=user_payload))
-
+                history = raw_history
                 replaced = False
                 for i in range(len(history) - 1, -1, -1):
                     if history[i].role == "user":
+                        print(f"[gen] replacing history[{i}] user msg with enriched payload "
+                            f"({len(user_payload)} chars)")
                         history[i] = ChatMsg(role="user", content=user_payload)
                         replaced = True
                         break
+
                 if not replaced:
+                    print(f"[gen] no user msg found in history — appending payload")
                     history.append(ChatMsg(role="user", content=user_payload))
+
+                print(f"[gen] final history ({len(history)} msgs): "
+                    + ", ".join(f"{m.role}:{len(m.content)}ch" for m in history))
 
                 llm_req = ChatRequest(
                     chat_id=chat_id,
@@ -806,6 +805,8 @@ async def chat_stream_with_files(
                     messages=history,
                     temperature=temperature,
                 )
+
+            print(f"[gen] 🚀 starting stream — provider={provider}, model={model_name}")
 
             loop = asyncio.get_event_loop()
 
@@ -822,27 +823,34 @@ async def chat_stream_with_files(
                 raise RuntimeError(f"Unknown provider: {provider}")
 
             it = iter(sync_iter())
+            chunk_count = 0
 
             while True:
                 try:
                     chunk = await loop.run_in_executor(None, lambda: next(it))
                 except StopIteration:
+                    print(f"[gen] stream exhausted after {chunk_count} SSE chunks")
                     break
 
                 yield chunk
+                chunk_count += 1
 
                 if chunk.startswith("data: "):
                     payload = chunk[6:].strip()
                     try:
                         obj = json.loads(payload)
                     except Exception:
+                        print(f"[gen] ⚠️ failed to parse SSE payload: {payload!r}")
                         obj = None
 
                     if isinstance(obj, dict) and obj.get("t"):
                         buffer_text += obj["t"]
+                        if chunk_count <= 3:
+                            print(f"[gen] first tokens: {obj['t']!r}")
                         await flush(False)
 
                     if isinstance(obj, dict) and obj.get("done"):
+                        print(f"[gen] ✅ done signal received after {chunk_count} chunks")
                         await flush(True)
                         return
 
@@ -850,10 +858,13 @@ async def chat_stream_with_files(
             yield sse({"done": True})
 
         except Exception as e:
+            import traceback
+            print(f"[gen] ❌ EXCEPTION: {type(e).__name__}: {e}")
+            traceback.print_exc()
             try:
                 await flush(True)
-            except Exception:
-                pass
+            except Exception as fe:
+                print(f"[gen] ❌ flush also failed: {fe}")
             yield sse({"error": f"{type(e).__name__}: {str(e)}"})
             yield sse({"done": True})
 
