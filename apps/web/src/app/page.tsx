@@ -705,11 +705,27 @@ export default function Page() {
   const [isSmall, setIsSmall] = useState(false);
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 900px)");
+    const mq = window.matchMedia("(max-width: 750px)");
     const apply = () => {
       setIsSmall(mq.matches);
       setIsSidebarCollapsed(mq.matches);
     };
+
+    apply();
+    if (mq.addEventListener) mq.addEventListener("change", apply);
+    else mq.addListener(apply);
+
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", apply);
+      else mq.removeListener(apply);
+    };
+  }, []);
+
+  const [isExtraSmall, setIsExtraSmall] = useState(false);
+
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 600px)");
+    const apply = () => setIsExtraSmall(mq.matches);
 
     apply();
     if (mq.addEventListener) mq.addEventListener("change", apply);
@@ -995,6 +1011,48 @@ export default function Page() {
                           {/* suggestions */}
                           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {[
+                              {
+                                t: "Generate a useful Python script",
+                                s: "Convert it to JavaScript, then explain the differences",
+                              },
+                              {
+                                t: "Evaluate two AI models of your choice",
+                                s: "Analyze speed, cost, and output quality",
+                              },
+                              {
+                                t: "Explain a well-known physics problem",
+                                s: "Break down its core principles clearly",
+                              },
+                              {
+                                t: "Next.js vs Angular",
+                                s: "When to choose each in real projects",
+                              },
+                            ]
+                              .slice(0, isExtraSmall ? 3 : 4)
+                              .map((x) => (
+                                <button
+                                  key={x.t}
+                                  type="button"
+                                  onClick={() => setInput(`${x.t}\n${x.s}`)}
+                                  className={[
+                                    "group cursor-pointer text-left rounded-2xl border border-white/10",
+                                    "bg-white/3 hover:bg-white/6 transition",
+                                    "px-5 py-4",
+                                    "transform-gpu will-change-transform",
+                                    "hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.99]",
+                                    "duration-200 ease-out",
+                                    "hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]",
+                                    "hover:ring-1 hover:ring-white/15",
+                                  ].join(" ")}
+                                >
+                                  <div className="text-sm font-medium text-gray-100">{x.t}</div>
+                                  <div className="mt-1 text-sm text-gray-400">{x.s}</div>
+                                </button>
+                              ))}
+                          </div>
+                          {/* suggestions */}
+                          {/* <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            {[
                               { t: "Generate a useful Python script", s: "Convert it to JavaScript, then explain the differences" },
                               { t: "Evaluate two AI models of your choice", s: "Analyze speed, cost, and output quality" },
                               { t: "Explain a well-known physics problem", s: "Break down its core principles clearly" },
@@ -1023,7 +1081,7 @@ export default function Page() {
                                 </div>
                               </button>
                             ))}
-                          </div>
+                          </div> */}
                         </div>
 
                       </div>

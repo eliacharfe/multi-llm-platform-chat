@@ -643,7 +643,7 @@ async def chat_stream_with_files(
     files: List[UploadFile] = File(default=[]),
     authorization: str | None = Header(default=None),
 ):
-    user_id = require_user_id_from_auth(authorization)  # 🔐 Firebase UID
+    user_id = require_user_id_from_auth(authorization)
 
     if model not in MODEL_OPTIONS:
         return StreamingResponse(
@@ -675,11 +675,9 @@ async def chat_stream_with_files(
             media_type="text/event-stream",
         )
 
-    # Build file context ONLY if files exist
     file_context = await uploads_to_context(files) if has_files else ""
     filenames = [(f.filename or "file") for f in files]
 
-    # ✅ Choose wrapper prompt
     if has_files:
         user_payload = build_file_task_prompt(
             user_message=user_text,
