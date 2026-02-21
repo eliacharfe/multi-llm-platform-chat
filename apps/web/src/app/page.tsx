@@ -144,7 +144,7 @@ function buildSectionedChoices(models: readonly string[]): SelectOpt[] {
       const [, modelName = ""] = pm.split(":", 2);
       out.push({
         value: pm,
-        label: `${icon} ${prettifyModelName(modelName)}`
+        label: `${icon}  ${prettifyModelName(modelName)}`
       });
     }
   }
@@ -264,6 +264,33 @@ export default function Page() {
     });
   }, []);
 
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setAuthReady(true);
+      setIsAuthed(!!u);
+
+      if (!u) {
+        setUserLabel("Sign in");
+        setChats([]);
+        setActiveChatId(null);
+        setMessages([]);
+        setInput("");
+        setAttachedFiles([]);
+        stop();
+        return;
+      }
+      setUserLabel(u.displayName || u.email || "Account");
+
+      try {
+        await refreshChats();
+      } catch {
+        // ignore
+      }
+    });
+
+    return () => unsub();
+  }, []);
+
   function openConfirm(opts: {
     title: string;
     message: string;
@@ -358,10 +385,15 @@ export default function Page() {
   }
 
   async function refreshChats() {
+    if (!auth.currentUser) {
+      setChats([]);
+      return;
+    }
+
     setIsSidebarLoading(true);
     try {
       const data = await api<{ chats: ChatListItem[] }>("/v1/chats", { method: "GET" });
-      setChats(data.chats || []);
+      setChats(data?.chats || []);
     } finally {
       setIsSidebarLoading(false);
     }
