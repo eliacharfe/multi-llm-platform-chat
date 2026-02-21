@@ -117,7 +117,7 @@ export default function AuthDialog({
 
     return createPortal(
         <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center"
+            className="fixed inset-0 z-9999 flex items-center justify-center"
             role="dialog"
             aria-modal="true"
             onMouseDown={(e) => {

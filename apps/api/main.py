@@ -266,6 +266,11 @@ def build_gemini_prompt(messages: List[ChatMsg]) -> str:
 
 def openai_stream(provider: str, model_name: str, req: ChatRequest):
     client = get_openai_compatible_client(provider)
+
+    debug = model_name.startswith("gpt-5")
+    if debug:
+        print("[openai_stream] provider=", provider, "model_name=", model_name)
+
     provider_model = req.model
     temp = get_temperature(provider_model, req.temperature)
     unsupported = UNSUPPORTED_PARAMS_BY_MODEL.get(model_name, set())
@@ -294,8 +299,19 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest):
     except TypeError:
         stream = _try_create({**base, "max_tokens": 2048})
 
+    i = 0
     for event in stream:
+        i += 1
+        delta_obj = getattr(event.choices[0], "delta", None)
+
         delta = getattr(event.choices[0].delta, "content", None)
+
+        if debug and (i <= 8 or not delta):
+            try:
+                print("[openai_stream] chunk", i, "delta=", delta_obj)
+                print("[openai_stream] finish_reason=", getattr(event.choices[0], "finish_reason", None))
+            except Exception:
+                pass
         if delta:
             yield sse({"t": delta})
 

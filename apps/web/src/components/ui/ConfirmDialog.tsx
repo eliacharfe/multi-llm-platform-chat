@@ -65,7 +65,7 @@ export default function ConfirmDialog({
 
     return (
         <div
-            className="fixed inset-0 z-[200] flex items-center justify-center"
+            className="fixed inset-0 z-200 flex items-center justify-center"
             role="dialog"
             aria-modal="true"
             onMouseDown={() => {
@@ -93,7 +93,7 @@ export default function ConfirmDialog({
                         type="button"
                         onClick={onClose}
                         disabled={loading}
-                        className="rounded-xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition px-4 py-2 text-sm text-gray-200 disabled:opacity-50"
+                        className="rounded-xl border border-white/10 bg-white/3 hover:bg-white/6 transition px-4 py-2 text-sm text-gray-200 disabled:opacity-50"
                     >
                         {cancelText}
                     </button>

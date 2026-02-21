@@ -14,6 +14,8 @@ import CopyButton from "@/components/ui/CopyButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ModelDropdown from "@/components/ui/ModelDropdown";
 import AuthDialog from "@/components/ui/AuthDialog";
+import Tooltip from "@/components/ui/Tooltip";
+import IconGhostButton from "@/components/ui/IconGhostButton";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -190,19 +192,9 @@ function formatChatTime(iso: string) {
   }
 }
 
-function getUserId(): string {
-  if (typeof window === "undefined") return "dev-user";
-  const key = "mlc_x_user_id";
-  let v = window.localStorage.getItem(key);
-  if (!v) {
-    v = crypto.randomUUID();
-    window.localStorage.setItem(key, v);
-  }
-  return v;
-}
 
 export default function Page() {
-  const DEFAULT_MODEL = "openai:gpt-5-mini";
+  const DEFAULT_MODEL = "gemini:models/gemini-2.5-flash";
 
   const [authReady, setAuthReady] = useState(false);
 
@@ -456,7 +448,9 @@ export default function Page() {
     refreshChats().catch(() => { });
   }, [authReady]);
 
+
   async function send() {
+
     if (!auth.currentUser) {
       setAuthOpen(true);
       return;
@@ -471,6 +465,9 @@ export default function Page() {
     if (!userText && attachedFiles.length === 0) return;
 
     const chatId = await ensureChatId();
+
+    const DEBUG_SSE = model.startsWith("openai:gpt-5");
+    console.log("[send] model:", model, "chatId:", chatId);
 
     const userMsg: Msg = { role: "user", content: userText };
     const nextMessages = [...messages, userMsg];
@@ -531,65 +528,77 @@ export default function Page() {
       let finished = false;
 
       const processBuffer = () => {
+        buffer = buffer.replace(/\r\n/g, "\n");
+
         while (true) {
           const idx = buffer.indexOf("\n\n");
           if (idx === -1) break;
 
-          const block = buffer.slice(0, idx);
+          const eventBlock = buffer.slice(0, idx);
           buffer = buffer.slice(idx + 2);
 
-          for (const line of block.split("\n")) {
-            if (!line.startsWith("data:")) continue;
-
-            const payload = line.slice(5).trim();
-            if (!payload) continue;
-
-            let obj: any;
-            try {
-              obj = JSON.parse(payload);
-            } catch {
-              continue;
-            }
-
-            if (obj.done) {
-              finished = true;
-              return;
-            }
-
-            if (obj.error) {
-              setMessages((prev) => {
-                const copy = [...prev];
-                const last = copy[copy.length - 1];
-                if (last?.role === "assistant") {
-                  copy[copy.length - 1] = {
-                    ...last,
-                    content: (last.content || "") + `\n⚠️ ${obj.error}`,
-                  };
-                }
-                return copy;
-              });
-              continue;
-            }
-
-            const token: string = obj.t ?? "";
-            if (!token) continue;
-
-            setMessages((prev) => {
-              const copy = [...prev];
-              const last = copy[copy.length - 1];
-
-              if (last?.role === "assistant") {
-                copy[copy.length - 1] = {
-                  ...last,
-                  content: (last.content || "") + token,
-                };
-              }
-
-              return copy;
-            });
-
-            scrollToBottom(false);
+          if (DEBUG_SSE) {
+            console.log("[sse] raw eventBlock:", JSON.stringify(eventBlock));
           }
+
+          const dataLines: string[] = [];
+          for (const line of eventBlock.split("\n")) {
+            if (line.startsWith("data:")) {
+              dataLines.push(line.slice(5).replace(/^\s/, ""));
+            }
+          }
+
+          if (!dataLines.length) {
+            if (DEBUG_SSE) console.log("[sse] (skip) no data: lines");
+            continue;
+          }
+
+          const payload = dataLines.join("\n");
+
+          if (DEBUG_SSE) {
+            console.log("[sse] payload:", payload);
+          }
+
+          let obj: any;
+          try {
+            obj = JSON.parse(payload);
+          } catch (e) {
+            if (DEBUG_SSE) console.warn("[sse] JSON.parse failed:", e);
+            continue;
+          }
+
+          if (DEBUG_SSE) console.log("[sse] obj:", obj);
+
+          if (obj.done) {
+            if (DEBUG_SSE) console.log("[sse] done received");
+            finished = true;
+            return;
+          }
+
+          if (obj.error) {
+            if (DEBUG_SSE) console.error("[sse] error received:", obj.error);
+            // (your existing error handling)
+            continue;
+          }
+
+          const token: string = obj.t ?? "";
+          if (!token) {
+            if (DEBUG_SSE) console.warn("[sse] no token (obj.t empty)");
+            continue;
+          }
+
+          if (DEBUG_SSE) console.log("[sse] token:", JSON.stringify(token));
+
+          setMessages((prev) => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === "assistant") {
+              copy[copy.length - 1] = { ...last, content: (last.content || "") + token };
+            }
+            return copy;
+          });
+
+          scrollToBottom(false);
         }
       };
 
@@ -614,6 +623,11 @@ export default function Page() {
       setAttachedFiles([]);
       scrollToBottom(true);
       refreshChats().catch(() => { });
+
+      if (DEBUG_SSE) {
+        const last = messages[messages.length - 1];
+        console.log("[send] finished=", finished, "last assistant length=", last?.content?.length);
+      }
     } catch (e: any) {
       if (e?.name !== "AbortError") {
         setMessages((prev) => {
@@ -692,7 +706,7 @@ export default function Page() {
     const mq = window.matchMedia("(max-width: 900px)");
     const apply = () => {
       setIsSmall(mq.matches);
-      setIsSidebarCollapsed(mq.matches); // default collapsed on mobile
+      setIsSidebarCollapsed(mq.matches);
     };
 
     apply();
@@ -712,7 +726,7 @@ export default function Page() {
         <button
           type="button"
           onClick={() => setIsSidebarCollapsed((v) => !v)}
-          className="fixed left-3 top-3 z-[60] h-10 w-10 rounded-xl border border-white/10 bg-black/30 backdrop-blur flex items-center justify-center text-gray-200 hover:bg-black/40 transition"
+          className="fixed left-3 top-3 z-60 h-10 w-10 rounded-xl border border-white/10 bg-black/30 backdrop-blur flex items-center justify-center text-gray-200 hover:bg-black/40 transition"
           aria-label={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
           title={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
         >
@@ -766,52 +780,45 @@ export default function Page() {
 
           {/* Toggle button */}
           <div className="relative pt-20 px-2">
-            <button
-              type="button"
-              onClick={() => setIsSidebarCollapsed((v) => !v)}
+
+            <div
               className={[
-                "absolute top-2 z-10 h-10 w-10 flex items-center justify-center",
-                "text-gray-300 hover:text-white transition-opacity opacity-70 hover:opacity-100",
-                isSidebarCollapsed ? "left-1/2 -translate-x-1/2" : "right-2",
+                "absolute top-2 z-10",
+                isSidebarCollapsed
+                  ? "left-1/2 -translate-x-1/2"
+                  : "right-2",
               ].join(" ")}
-              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              aria-label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
             >
-              {isSidebarCollapsed ? (
+              <IconGhostButton
+                label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                withTooltip={false}
+                size="md"
+                onClick={() => setIsSidebarCollapsed((v) => !v)}
+                disabled={isStreaming}
+              >
                 <svg
-                  xmlns="http://www.w3.org/2000/svg"
                   viewBox="0 0 24 24"
+                  className={`h-5 w-5 transition-transform duration-200 ${isSidebarCollapsed ? "rotate-180" : ""
+                    }`}
                   fill="none"
                   stroke="currentColor"
-                  strokeWidth="2.5"
+                  strokeWidth="2"
                   strokeLinecap="round"
                   strokeLinejoin="round"
-                  className="h-6 w-6"
+                  aria-hidden="true"
                 >
-                  <path d="M9 18l6-6-6-6" />
+                  <rect x="4" y="5" width="16" height="14" rx="2" />
+                  <path d="M12 5v14" />
                 </svg>
-              ) : (
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="h-6 w-6"
-                >
-                  <path d="M15 18l-6-6 6-6" />
-                </svg>
-              )}
-            </button>
+              </IconGhostButton>
+            </div>
           </div>
 
           {/* Sidebar content (full height column) */}
           {!isSidebarCollapsed && (
             <div className="flex-1 min-h-0 px-4 pb-4 pt-0 flex flex-col">
               {/* Top actions */}
-              <div className="pt-2 flex flex-col gap-4 shrink-0">
+              <div className="flex flex-col gap-3 shrink-0">
                 <button
                   className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left"
                   onClick={newDraftChat}
@@ -883,37 +890,53 @@ export default function Page() {
                             </div>
                           </button>
 
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
+                          <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
 
-                              const id = c.id;
+                                const id = c.id;
 
-                              openConfirm({
-                                title: "Delete chat?",
-                                message: "This will permanently delete the chat and its messages.",
-                                variant: "danger",
-                                confirmText: "Delete",
-                                cancelText: "Cancel",
-                                onConfirm: async () => {
-                                  await api(`/v1/chats/${id}`, { method: "DELETE" });
+                                openConfirm({
+                                  title: "Delete chat?",
+                                  message: "This will permanently delete the chat and its messages.",
+                                  variant: "danger",
+                                  confirmText: "Delete",
+                                  cancelText: "Cancel",
+                                  onConfirm: async () => {
+                                    await api(`/v1/chats/${id}`, { method: "DELETE" });
 
-                                  if (activeChatId === id) {
-                                    setActiveChatId(null);
-                                    setMessages([]);
-                                  }
+                                    if (activeChatId === id) {
+                                      setActiveChatId(null);
+                                      setMessages([]);
+                                    }
 
-                                  await refreshChats();
-                                  closeConfirm();
-                                },
-                              });
-                            }}
-                            className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition text-gray-400 hover:text-red-400"
-                            title="Delete chat"
-                          >
-                            🗑️
-                          </button>
+                                    await refreshChats();
+                                    closeConfirm();
+                                  },
+                                });
+                              }}
+                              className="relative group/delete text-gray-400 hover:text-red-400"
+                              aria-label="Delete chat"
+                            >
+                              🗑️
+
+                              {/* Tooltip (bottom, compact) */}
+                              <span
+                                className={[
+                                  "pointer-events-none absolute right-0 translate-x-0 top-full mb-2 z-9999",
+                                  "opacity-0 translate-y-0.5 group-hover/delete:opacity-100 group-hover/delete:translate-y-0",
+                                  "transition duration-150",
+                                ].join(" ")}
+                              >
+                                <span className="absolute right-2 -top-[3px] h-1.5 w-1.5 rotate-45 bg-white/95 rounded-[2px] shadow-sm z-9999" />
+                                <span className="block whitespace-nowrap rounded-md bg-white/95 px-2 py-1 text-[11px] leading-none text-black shadow-lg z-9999">
+                                  Delete Chat
+                                </span>
+                              </span>
+                            </button>
+                          </div>
                         </div>
                       );
                     })}
@@ -925,7 +948,7 @@ export default function Page() {
               <div className="shrink-0 pt-4">
                 <button
                   type="button"
-                  onClick={() => setAuthOpen(true)} // same dialog: shows Sign out if logged in
+                  onClick={() => setAuthOpen(true)}
                   className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center justify-between gap-2"
                 >
                   <span className="truncate">{userLabel}</span>
@@ -942,7 +965,7 @@ export default function Page() {
             {/* chat scroller */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-6 pt-28 pb-1"
+              className="flex-1 overflow-y-auto px-6 pt-8 pb-1"
               onScroll={() => {
                 autoScrollEnabledRef.current = isNearBottom(140);
               }}
@@ -955,7 +978,7 @@ export default function Page() {
 
                         {/* Glow background */}
                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                          <div className="h-40 w-[28rem] bg-gradient-to-r from-blue-500/20 via-indigo-500/20 to-blue-500/20 blur-3xl rounded-full opacity-60" />
+                          <div className="h-40 w-md bg-linear-to-r from-blue-500/20 via-indigo-500/20 to-blue-500/20 blur-3xl rounded-full opacity-60" />
                         </div>
 
                         <div className="relative">
@@ -970,16 +993,25 @@ export default function Page() {
                           {/* suggestions */}
                           <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
                             {[
-                              { t: "What is the capital of Indonesia?", s: "Jakarta or Nusantara?" },
-                              { t: "Generate Python code for", s: "web scraping with BeautifulSoup" },
-                              { t: "Explain a well-known physics problem", s: "and its fundamental principles" },
-                              { t: "Compare Next.js vs Angular", s: "project use cases" },
+                              { t: "Generate a useful Python script", s: "Convert it to JavaScript, then explain the differences" },
+                              { t: "Evaluate two AI models of your choice", s: "Analyze speed, cost, and output quality" },
+                              { t: "Explain a well-known physics problem", s: "Break down its core principles clearly" },
+                              { t: "Next.js vs Angular", s: "When to choose each in real projects" },
                             ].map((x) => (
                               <button
                                 key={x.t}
                                 type="button"
                                 onClick={() => setInput(`${x.t}\n${x.s}`)}
-                                className="cursor-pointer text-left rounded-2xl border border-white/10 bg-white/[0.03] hover:bg-white/[0.06] transition px-5 py-4"
+                                className={[
+                                  "group cursor-pointer text-left rounded-2xl border border-white/10",
+                                  "bg-white/3 hover:bg-white/6 transition",
+                                  "px-5 py-4",
+                                  "transform-gpu will-change-transform",
+                                  "hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.99]",
+                                  "duration-200 ease-out",
+                                  "hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]",
+                                  "hover:ring-1 hover:ring-white/15",
+                                ].join(" ")}
                               >
                                 <div className="text-sm font-medium text-gray-100">
                                   {x.t}
@@ -1017,13 +1049,25 @@ export default function Page() {
                                   </div>
                                 </div>
 
-                                <div className="mt-2 flex justify-end">
+                                <div className="mt-1 flex justify-end">
                                   <CopyButton text={m.content} />
                                 </div>
                               </div>
                             ) : (
                               <div className="w-full max-w-3xl">
-                                <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
+                                <div className="
+  text-sm
+  leading-relaxed
+  text-gray-100
+  [&_p]:my-3
+  [&_ul]:my-3
+  [&_ol]:my-3
+  [&_li]:my-1
+  [&_h1]:mt-6 [&_h1]:mb-3
+  [&_h2]:mt-5 [&_h2]:mb-2
+  [&_h3]:mt-4 [&_h3]:mb-2
+  [&_pre]:my-4
+">
                                   {isStreaming &&
                                     idx === messages.length - 1 &&
                                     (m.content?.length ?? 0) === 0 && (
@@ -1101,7 +1145,7 @@ export default function Page() {
             {/* COMPOSER (bottom bar) */}
             <div className="px-6 pb-3 pt-4">
               <div className="mx-auto max-w-3xl">
-                <div className="relative p-[3px] rounded-2xl focus-within:bg-gradient-to-r focus-within:from-blue-500 focus-within:via-indigo-500 focus-within:to-blue-500 transition-all">
+                <div className="relative p-[3px] rounded-2xl focus-within:bg-linear-to-r focus-within:from-blue-500 focus-within:via-indigo-500 focus-within:to-blue-500 transition-all">
                   <div className="rounded-2xl bg-[#2f2f2f]">
                     <div className="px-4 pt-4">
 
@@ -1157,24 +1201,68 @@ export default function Page() {
                     </div>
 
                     <div className="flex items-center justify-between gap-3 px-3 pb-3">
-                      <div className="flex items-center gap-2">
-                        <label className="cursor-pointer rounded-lg px-2 py-2 hover:bg-white/5 transition border border-transparent hover:border-white/10">
-                          📎
-                          <input
-                            type="file"
-                            multiple
-                            className="hidden"
-                            onChange={(e) => {
-                              const files = Array.from(e.target.files || []);
-                              if (!files.length) return;
+                      <div className="flex items-center gap-1">
+                        {/* Sidebar toggle (matches screenshot style) */}
+                        <IconGhostButton
+                          label="Toggle Sidebar"
+                          onClick={() => setIsSidebarCollapsed((v) => !v)}
+                          disabled={isStreaming}
+                        >
+                          {/* sidebar icon */}
+                          <svg
+                            viewBox="0 0 24 24"
+                            className="h-5 w-5"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            aria-hidden="true"
+                          >
+                            <rect x="4" y="5" width="16" height="14" rx="2" />
+                            <path d="M12 5v14" />
+                          </svg>
+                        </IconGhostButton>
 
-                              setAttachedFiles((prev) => [...prev, ...files]);
+                        {/* Attachment (same ghost style + tooltip) */}
+                        <Tooltip text="Attach files" side="bottom">
+                          <label
+                            className={[
+                              "h-7 w-7 rounded-lg",
+                              "flex items-center justify-center",
+                              "text-white/70 hover:text-white",
+                              "hover:bg-white/6",
+                              "transition cursor-pointer",
+                            ].join(" ")}
+                            aria-label="Attach files"
+                          >
+                            <svg
+                              viewBox="0 0 24 24"
+                              className="h-5 w-5"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              aria-hidden="true"
+                            >
+                              <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.84 8.84a2 2 0 0 1-2.83-2.83l8.49-8.49" />
+                            </svg>
 
-                              e.currentTarget.value = "";
-                            }}
-                            disabled={isStreaming}
-                          />
-                        </label>
+                            <input
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => {
+                                const files = Array.from(e.target.files || []);
+                                if (!files.length) return;
+                                setAttachedFiles((prev) => [...prev, ...files]);
+                                e.currentTarget.value = "";
+                              }}
+                              disabled={isStreaming}
+                            />
+                          </label>
+                        </Tooltip>
 
                         <ModelDropdown
                           value={model}
@@ -1185,7 +1273,6 @@ export default function Page() {
                           }}
                           disabled={isStreaming}
                         />
-
                       </div>
 
                       <button

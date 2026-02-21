@@ -2,6 +2,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import Tooltip from "@/components/ui/Tooltip";
 
 export type SelectOpt = { value: string; label: string; disabled?: boolean };
 
@@ -23,7 +24,6 @@ export default function ModelDropdown({
         return options.find((o) => o.value === value)?.label ?? value;
     }, [options, value]);
 
-    // close on outside click
     useEffect(() => {
         const onDown = (e: MouseEvent) => {
             if (!wrapRef.current) return;
@@ -33,7 +33,6 @@ export default function ModelDropdown({
         return () => window.removeEventListener("mousedown", onDown);
     }, []);
 
-    // Esc closes
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (e.key === "Escape") setOpen(false);
@@ -66,27 +65,39 @@ export default function ModelDropdown({
 
     return (
         <div className="relative" ref={wrapRef}>
-            <button
-                type="button"
-                disabled={disabled}
-                onClick={() => setOpen((v) => !v)}
-                className="rounded-lg border border-white/10 bg-[#262626] px-3 py-2 text-xs text-gray-200 hover:bg-white/[0.06] transition focus:outline-none focus:ring-1 focus:ring-white/20 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
-                title={selectedLabel}
-            >
-                <span className="truncate max-w-[300px]">{selectedLabel}</span>
-                <svg
-                    viewBox="0 0 24 24"
-                    className={`h-4 w-4 opacity-80 transition ${open ? "rotate-180" : ""}`}
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    aria-hidden="true"
+
+            <Tooltip text={"Choose models"}>
+                <button
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => setOpen((v) => !v)}
+                    className={[
+                        "h-9 inline-flex items-center gap-2",
+                        "rounded-lg px-2",
+                        "text-sm text-gray-200/90",
+                        "bg-transparent border border-transparent",
+                        "hover:bg-white/6 hover:border-white/10",
+                        "transition",
+                        "focus:outline-none focus:ring-2 focus:ring-white/10",
+                        "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-transparent",
+                    ].join(" ")}
                 >
-                    <path d="M6 9l6 6 6-6" />
-                </svg>
-            </button>
+                    <span className="truncate max-w-[260px] sm:max-w-[320px]">{selectedLabel}</span>
+
+                    <svg
+                        viewBox="0 0 24 24"
+                        className={`h-4 w-4 opacity-80 transition ${open ? "rotate-180" : ""}`}
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        aria-hidden="true"
+                    >
+                        <path d="M6 9l6 6 6-6" />
+                    </svg>
+                </button>
+            </Tooltip>
 
             {open && !disabled ? (
                 <>
@@ -130,7 +141,7 @@ export default function ModelDropdown({
                                         }}
                                         className={[
                                             "w-full text-left px-3 py-2 rounded-xl text-sm transition-colors duration-150",
-                                            "hover:bg-white/[0.08]",
+                                            "hover:bg-white/8",
                                             isActive
                                                 ? "bg-white/10 text-gray-100"
                                                 : "text-gray-200",
