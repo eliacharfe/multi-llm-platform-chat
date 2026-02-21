@@ -254,6 +254,16 @@ export default function Page() {
   const [confirmText, setConfirmText] = useState("OK");
   const [cancelText, setCancelText] = useState("Cancel");
 
+  const [isAuthed, setIsAuthed] = useState(false);
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (u) => {
+      setIsAuthed(!!u);
+      if (!u) setUserLabel("Sign in");
+      else setUserLabel(u.displayName || u.email || "Account");
+    });
+  }, []);
+
   function openConfirm(opts: {
     title: string;
     message: string;
@@ -278,17 +288,17 @@ export default function Page() {
   }
 
   const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
-  // const canSend = useMemo(
-  //   () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
-  //   [input, attachedFiles.length, isStreaming]
-  // );
   const canSend = useMemo(
-    () =>
-      auth.currentUser &&
-      (input.trim().length > 0 || attachedFiles.length > 0) &&
-      !isStreaming,
-    [input, attachedFiles.length, isStreaming, authReady]
+    () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
+    [input, attachedFiles.length, isStreaming]
   );
+  // const canSend = useMemo(
+  //   () =>
+  //     auth.currentUser &&
+  //     (input.trim().length > 0 || attachedFiles.length > 0) &&
+  //     !isStreaming,
+  //   [input, attachedFiles.length, isStreaming, authReady]
+  // );
 
   const filteredChats = useMemo(() => {
     const q = chatSearch.trim().toLowerCase();
@@ -331,7 +341,7 @@ export default function Page() {
 
     if (res.status === 401) {
       setAuthOpen(true);
-      return undefined as T; // prevents crash / red screen
+      return undefined as T;
     }
 
     if (!res.ok) {
@@ -883,11 +893,11 @@ export default function Page() {
               <div className="shrink-0 pt-4">
                 <button
                   type="button"
-                  onClick={() => setAuthOpen(true)}
+                  onClick={() => setAuthOpen(true)} // same dialog: shows Sign out if logged in
                   className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center justify-between gap-2"
                 >
                   <span className="truncate">{userLabel}</span>
-                  <span className="text-xs text-gray-400">{auth.currentUser ? "●" : "○"}</span>
+                  <span className="text-xs text-gray-400">{isAuthed ? "🟢" : "○"}</span>
                 </button>
               </div>
             </div>
@@ -968,58 +978,13 @@ export default function Page() {
                           >
                             {isUser ? (
                               <div className="max-w-[75%]">
-                                <div className="text-sm leading-relaxed text-gray-100">
-                                  {m.content}
-                                  {/* <ReactMarkdown
-                                    remarkPlugins={[remarkGfm]}
-                                    rehypePlugins={[rehypePrism]}
-                                    components={{
-                                      pre({ children }) {
-                                        const child = Array.isArray(children) ? children[0] : children;
-                                        const className = (child as any)?.props?.className || "";
-                                        const lang = (className.match(/language-(\w+)/)?.[1] || "").toLowerCase();
-
-                                        const raw =
-                                          (child as any)?.props?.children
-                                            ? childrenToText((child as any).props.children).replace(/\n$/, "")
-                                            : "";
-
-                                        return (
-                                          <div className="relative my-3">
-                                            <div className="absolute right-2 top-2 flex items-center gap-2 z-10">
-                                              {lang ? (
-                                                <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
-                                                  {lang}
-                                                </span>
-                                              ) : null}
-                                              <CopyButton text={raw} className="bg-black/30" title="Copy code" />
-                                            </div>
-
-                                            <pre className={`${className} bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto text-sm`}>
-                                              {children}
-                                            </pre>
-                                          </div>
-                                        );
-                                      },
-
-                                      code({ className, children, ...props }) {
-                                        const isBlock = /language-\w+/.test(className || "");
-                                        if (isBlock) return <code className={className} {...props}>{children}</code>;
-
-                                        return (
-                                          <code
-                                            className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
-                                            {...props}
-                                          >
-                                            {children}
-                                          </code>
-                                        );
-                                      },
-                                    }}
-                                  >
+                                {/* Bubble */}
+                                <div className="rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm">
+                                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
                                     {m.content}
-                                  </ReactMarkdown> */}
+                                  </div>
                                 </div>
+
                                 <div className="mt-2 flex justify-end">
                                   <CopyButton text={m.content} />
                                 </div>
@@ -1171,10 +1136,8 @@ export default function Page() {
                               const files = Array.from(e.target.files || []);
                               if (!files.length) return;
 
-                              // append to current selection (so user can add more)
                               setAttachedFiles((prev) => [...prev, ...files]);
 
-                              // allow selecting same file again later
                               e.currentTarget.value = "";
                             }}
                             disabled={isStreaming}
@@ -1185,7 +1148,6 @@ export default function Page() {
                           value={model}
                           options={modelChoices}
                           onChange={(v) => {
-                            // ignore header clicks if somehow passed
                             if (v.startsWith("__header__:")) return;
                             setModel(v);
                           }}
