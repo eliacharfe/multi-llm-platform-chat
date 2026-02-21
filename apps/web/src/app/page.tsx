@@ -593,7 +593,9 @@ export default function Page() {
             const copy = [...prev];
             const last = copy[copy.length - 1];
             if (last?.role === "assistant") {
-              copy[copy.length - 1] = { ...last, content: (last.content || "") + token };
+              const next = (last.content || "") + token;
+              copy[copy.length - 1] = { ...last, content: next };
+              if (DEBUG_SSE) console.log("[ui] assistant len:", next.length);
             }
             return copy;
           });

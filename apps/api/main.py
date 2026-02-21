@@ -264,7 +264,85 @@ def build_gemini_prompt(messages: List[ChatMsg]) -> str:
     return "\n".join(lines).strip()
 
 
+
 def openai_stream(provider: str, model_name: str, req: ChatRequest):
+    client = get_openai_compatible_client(provider)
+
+    if provider == "openai" and model_name.startswith("gpt-5"):
+        input_msgs = [{"role": m.role, "content": m.content or ""} for m in (req.messages or [])]
+        create_kwargs: Dict[str, Any] = {
+            "model": model_name,
+            "input": input_msgs,
+            "stream": True,
+        }
+
+        stream = None
+        for tok_kw in ("max_output_tokens", "max_completion_tokens", "max_tokens"):
+            try:
+                stream = client.responses.create(**{**create_kwargs, tok_kw: 2048})
+                break
+            except TypeError:
+                continue
+        if stream is None:
+            stream = client.responses.create(**create_kwargs)
+
+        for event in stream:
+            et = getattr(event, "type", None)
+
+            if et == "response.output_text.delta":
+                delta = getattr(event, "delta", None)
+                if isinstance(delta, str) and delta:
+                    yield sse({"t": delta})
+
+            elif et in ("response.output_text.done", "response.done"):
+                break
+
+        yield sse({"done": True})
+        return
+
+    # ✅ everyone else: keep your existing chat.completions streaming
+    debug = model_name.startswith("gpt-5")
+    if debug:
+        print("[openai_stream] provider=", provider, "model_name=", model_name)
+
+    provider_model = req.model
+    temp = get_temperature(provider_model, req.temperature)
+    unsupported = UNSUPPORTED_PARAMS_BY_MODEL.get(model_name, set())
+
+    kwargs: Dict[str, Any] = {
+        "model": model_name,
+        "messages": sanitize_openai_messages(req.messages),
+        "stream": True,
+    }
+
+    if provider == "openrouter":
+        hdrs = openrouter_extra_headers()
+        if hdrs:
+            kwargs["extra_headers"] = hdrs
+
+    if "temperature" not in unsupported:
+        kwargs["temperature"] = temp
+
+    def _try_create(extra: Dict[str, Any]):
+        return client.chat.completions.create(**extra)
+
+    base = dict(kwargs)
+
+    try:
+        stream = _try_create({**base, "max_completion_tokens": 2048})
+    except TypeError:
+        stream = _try_create({**base, "max_tokens": 2048})
+
+    for event in stream:
+        choice = event.choices[0]
+        delta_obj = getattr(choice, "delta", None)
+        delta = _extract_delta_text(delta_obj)
+        if delta:
+            yield sse({"t": delta})
+
+    yield sse({"done": True})
+
+# def openai_stream(provider: str, model_name: str, req: ChatRequest):
     client = get_openai_compatible_client(provider)
 
     debug = model_name.startswith("gpt-5")
@@ -301,21 +379,60 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest):
 
     i = 0
     for event in stream:
-        i += 1
-        delta_obj = getattr(event.choices[0], "delta", None)
+        choice = event.choices[0]
+        delta_obj = getattr(choice, "delta", None)
 
-        delta = getattr(event.choices[0].delta, "content", None)
+        delta = _extract_delta_text(delta_obj)
 
-        if debug and (i <= 8 or not delta):
-            try:
-                print("[openai_stream] chunk", i, "delta=", delta_obj)
-                print("[openai_stream] finish_reason=", getattr(event.choices[0], "finish_reason", None))
-            except Exception:
-                pass
+        if debug:
+            print("[openai_stream] delta_obj=", delta_obj)
+            print("[openai_stream] extracted delta=", delta)
+            print("[openai_stream] finish_reason=", getattr(choice, "finish_reason", None))
         if delta:
             yield sse({"t": delta})
 
     yield sse({"done": True})
+
+def _extract_delta_text(delta_obj: Any) -> str | None:
+    if not delta_obj:
+        return None
+
+    c = getattr(delta_obj, "content", None)
+    if isinstance(c, str) and c:
+        return c
+
+    t = getattr(delta_obj, "text", None)
+    if isinstance(t, str) and t:
+        return t
+
+    if isinstance(c, list):
+        out = []
+        for part in c:
+            if isinstance(part, dict):
+                if isinstance(part.get("text"), str):
+                    out.append(part["text"])
+            else:
+                pt = getattr(part, "text", None)
+                if isinstance(pt, str):
+                    out.append(pt)
+        joined = "".join(out).strip()
+        return joined or None
+
+    if isinstance(delta_obj, dict):
+        if isinstance(delta_obj.get("content"), str) and delta_obj["content"]:
+            return delta_obj["content"]
+        if isinstance(delta_obj.get("text"), str) and delta_obj["text"]:
+            return delta_obj["text"]
+        c2 = delta_obj.get("content")
+        if isinstance(c2, list):
+            out = []
+            for part in c2:
+                if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    out.append(part["text"])
+            joined = "".join(out).strip()
+            return joined or None
+
+    return None
 
 
 def anthropic_stream(model_name: str, req: ChatRequest):
@@ -662,7 +779,14 @@ async def chat_stream_with_files(
 
                 history = [ChatMsg(role=m.role, content=m.content) for m in (chat.messages if chat else [])]
 
-                # ✅ Replace last user msg with wrapped payload (append once if none)
+                while history and history[-1].role == "assistant" and not (history[-1].content or "").strip():
+                    history.pop()
+
+                history = [m for m in history if not (m.role == "assistant" and not (m.content or "").strip())]
+
+                if not history or history[-1].role != "user":
+                    history.append(ChatMsg(role="user", content=user_payload))
+
                 replaced = False
                 for i in range(len(history) - 1, -1, -1):
                     if history[i].role == "user":
