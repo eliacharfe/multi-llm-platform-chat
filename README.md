@@ -1,7 +1,7 @@
 # 🚀 Multi LLM Chat Platform
 
 <p align="center">
-  <img src="./assets/screenshot.png" width="900" />
+  <img src="./assets/screenshot1.png" width="900" />
 </p>
 
 A full-stack **multi-provider AI chat application** that allows you to interact with multiple LLM providers from a single unified interface.
@@ -319,3 +319,7 @@ This project demonstrates:
 - Production-style backend design
 - Modern TypeScript + Python integration
 - Clean and scalable AI chat foundation
+
+<p align="center">
+  <img src="./assets/screenshot2.png" width="900" />
+</p>
