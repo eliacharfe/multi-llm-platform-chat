@@ -977,24 +977,23 @@ export default function Page() {
           )}
         </aside>
 
+
         {/* MAIN CHAT AREA */}
         <section className="flex-1 relative">
           <div className="h-full flex flex-col">
             {/* chat scroller */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-6 pt-8 pb-1"
+              className="flex-1 overflow-y-auto px-6 pt-8 pb-[calc(220px+env(safe-area-inset-bottom))]"
               onScroll={() => {
                 autoScrollEnabledRef.current = isNearBottom(140);
               }}
             >
               <div className="mx-auto max-w-3xl">
                 {messages.length === 0 ? (
-                  <div className="flex items-center justify-center py-20 ">
-
+                  <div className="flex items-center justify-center py-20">
                     <div className="w-full max-w-3xl px-2">
                       <div className="relative text-center">
-
                         {/* Glow background */}
                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                           <div className="h-40 w-md bg-linear-to-r from-blue-500/20 via-indigo-500/20 to-blue-500/20 blur-3xl rounded-full opacity-60" />
@@ -1051,40 +1050,7 @@ export default function Page() {
                                 </button>
                               ))}
                           </div>
-                          {/* suggestions */}
-                          {/* <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {[
-                              { t: "Generate a useful Python script", s: "Convert it to JavaScript, then explain the differences" },
-                              { t: "Evaluate two AI models of your choice", s: "Analyze speed, cost, and output quality" },
-                              { t: "Explain a well-known physics problem", s: "Break down its core principles clearly" },
-                              { t: "Next.js vs Angular", s: "When to choose each in real projects" },
-                            ].map((x) => (
-                              <button
-                                key={x.t}
-                                type="button"
-                                onClick={() => setInput(`${x.t}\n${x.s}`)}
-                                className={[
-                                  "group cursor-pointer text-left rounded-2xl border border-white/10",
-                                  "bg-white/3 hover:bg-white/6 transition",
-                                  "px-5 py-4",
-                                  "transform-gpu will-change-transform",
-                                  "hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.99]",
-                                  "duration-200 ease-out",
-                                  "hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]",
-                                  "hover:ring-1 hover:ring-white/15",
-                                ].join(" ")}
-                              >
-                                <div className="text-sm font-medium text-gray-100">
-                                  {x.t}
-                                </div>
-                                <div className="mt-1 text-sm text-gray-400">
-                                  {x.s}
-                                </div>
-                              </button>
-                            ))}
-                          </div> */}
                         </div>
-
                       </div>
                     </div>
                   </div>
@@ -1116,19 +1082,21 @@ export default function Page() {
                               </div>
                             ) : (
                               <div className="w-full max-w-3xl">
-                                <div className="
-  text-sm
-  leading-relaxed
-  text-gray-100
-  [&_p]:my-3
-  [&_ul]:my-3
-  [&_ol]:my-3
-  [&_li]:my-1
-  [&_h1]:mt-6 [&_h1]:mb-3
-  [&_h2]:mt-5 [&_h2]:mb-2
-  [&_h3]:mt-4 [&_h3]:mb-2
-  [&_pre]:my-4
-">
+                                <div
+                                  className="
+                            text-sm
+                            leading-relaxed
+                            text-gray-100
+                            [&_p]:my-3
+                            [&_ul]:my-3
+                            [&_ol]:my-3
+                            [&_li]:my-1
+                            [&_h1]:mt-6 [&_h1]:mb-3
+                            [&_h2]:mt-5 [&_h2]:mb-2
+                            [&_h3]:mt-4 [&_h3]:mb-2
+                            [&_pre]:my-4
+                          "
+                                >
                                   {isStreaming &&
                                     idx === messages.length - 1 &&
                                     (m.content?.length ?? 0) === 0 && (
@@ -1143,12 +1111,12 @@ export default function Page() {
                                       remarkPlugins={[remarkGfm]}
                                       components={{
                                         code({ className, children, node, ...props }) {
-                                          const lang = (className || "").match(/language-(\w+)/)?.[1] || "";
+                                          const lang =
+                                            (className || "").match(/language-(\w+)/)?.[1] || "";
                                           const isBlock = /language-\w+/.test(className || "");
 
                                           if (isBlock) {
                                             const raw = childrenToText(children).replace(/\n$/, "");
-
                                             const grammar = Prism.languages[lang];
                                             const highlighted = grammar
                                               ? Prism.highlight(raw, grammar, lang)
@@ -1162,7 +1130,11 @@ export default function Page() {
                                                       {lang}
                                                     </span>
                                                   )}
-                                                  <CopyButton text={raw} className="bg-black/30" title="Copy code" />
+                                                  <CopyButton
+                                                    text={raw}
+                                                    className="bg-black/30"
+                                                    title="Copy code"
+                                                  />
                                                 </div>
                                                 <pre className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto text-sm">
                                                   <code
@@ -1175,12 +1147,14 @@ export default function Page() {
                                           }
 
                                           return (
-                                            <code className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs" {...props}>
+                                            <code
+                                              className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
+                                              {...props}
+                                            >
                                               {children}
                                             </code>
                                           );
                                         },
-
                                       }}
                                     >
                                       {m.content}
@@ -1203,99 +1177,76 @@ export default function Page() {
               </div>
             </div>
 
-            {/* COMPOSER (bottom bar) */}
-            <div className="px-6 pb-3 pt-4">
-              <div className="mx-auto max-w-3xl">
-                <div className="relative p-[3px] rounded-2xl focus-within:bg-linear-to-r focus-within:from-blue-500 focus-within:via-indigo-500 focus-within:to-blue-500 transition-all">
-                  <div className="rounded-2xl bg-[#2f2f2f]">
-                    <div className="px-4 pt-4">
-
-                      {attachedFiles.length > 0 ? (
-                        <div className="px-4 pt-3 flex flex-wrap gap-2">
-                          {attachedFiles.map((f, idx) => (
-                            <div
-                              key={`${f.name}-${idx}`}
-                              className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-gray-200"
-                              title={f.name}
-                            >
-                              <span className="max-w-[220px] truncate">{f.name}</span>
-                              <button
-                                type="button"
-                                className="opacity-80 hover:opacity-100"
-                                onClick={() =>
-                                  setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
-                                }
-                                disabled={isStreaming}
-                                aria-label={`Remove ${f.name}`}
-                                title="Remove"
+            {/* COMPOSER (bottom bar) — FIXED OUTSIDE SCROLL */}
+            <div
+              className="fixed bottom-0 z-50 bg-[#252525]"
+              style={{
+                left: isSmall ? 0 : isSidebarCollapsed ? 56 : 290,
+                right: 0,
+              }}
+            >
+              <div className="px-6 pt-4 pb-[calc(12px+env(safe-area-inset-bottom))]">
+                <div className="mx-auto max-w-3xl">
+                  <div className="relative p-[3px] rounded-2xl focus-within:bg-linear-to-r focus-within:from-blue-500 focus-within:via-indigo-500 focus-within:to-blue-500 transition-all">
+                    <div className="rounded-2xl bg-[#2f2f2f]">
+                      <div className="px-4 pt-4">
+                        {attachedFiles.length > 0 ? (
+                          <div className="px-4 pt-3 flex flex-wrap gap-2">
+                            {attachedFiles.map((f, idx) => (
+                              <div
+                                key={`${f.name}-${idx}`}
+                                className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-gray-200"
+                                title={f.name}
                               >
-                                ✕
-                              </button>
-                            </div>
-                          ))}
+                                <span className="max-w-[220px] truncate">{f.name}</span>
+                                <button
+                                  type="button"
+                                  className="opacity-80 hover:opacity-100"
+                                  onClick={() =>
+                                    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
+                                  }
+                                  disabled={isStreaming}
+                                  aria-label={`Remove ${f.name}`}
+                                  title="Remove"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ))}
 
-                          <button
-                            type="button"
-                            className="ml-1 text-xs text-gray-300/80 hover:text-gray-200 underline underline-offset-2"
-                            onClick={() => setAttachedFiles([])}
-                            disabled={isStreaming}
-                          >
-                            Clear
-                          </button>
-                        </div>
-                      ) : null}
+                            <button
+                              type="button"
+                              className="ml-1 text-xs text-gray-300/80 hover:text-gray-200 underline underline-offset-2"
+                              onClick={() => setAttachedFiles([])}
+                              disabled={isStreaming}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        ) : null}
 
-                      <textarea
-                        className="w-full resize-none bg-transparent outline-none text-gray-100 placeholder:text-gray-400 text-sm leading-relaxed"
-                        placeholder="Send a message…"
-                        rows={2}
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" && !e.shiftKey) {
-                            e.preventDefault();
-                            send();
-                          }
-                        }}
-                        disabled={isStreaming}
-                      />
-                    </div>
-
-                    <div className="flex items-center justify-between gap-3 px-3 pb-3">
-                      <div className="flex items-center gap-1">
-                        {/* Sidebar toggle (matches screenshot style) */}
-                        <IconGhostButton
-                          label="Toggle Sidebar"
-                          onClick={() => setIsSidebarCollapsed((v) => !v)}
+                        <textarea
+                          className="w-full resize-none bg-transparent outline-none text-gray-100 placeholder:text-gray-400 text-sm leading-relaxed"
+                          placeholder="Send a message…"
+                          rows={2}
+                          value={input}
+                          onChange={(e) => setInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              send();
+                            }
+                          }}
                           disabled={isStreaming}
-                        >
-                          {/* sidebar icon */}
-                          <svg
-                            viewBox="0 0 24 24"
-                            className="h-5 w-5"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                          >
-                            <rect x="4" y="5" width="16" height="14" rx="2" />
-                            <path d="M12 5v14" />
-                          </svg>
-                        </IconGhostButton>
+                        />
+                      </div>
 
-                        {/* Attachment (same ghost style + tooltip) */}
-                        <Tooltip text="Attach files" side="bottom">
-                          <label
-                            className={[
-                              "h-7 w-7 rounded-lg",
-                              "flex items-center justify-center",
-                              "text-white/70 hover:text-white",
-                              "hover:bg-white/6",
-                              "transition cursor-pointer",
-                            ].join(" ")}
-                            aria-label="Attach files"
+                      <div className="flex items-center justify-between gap-3 px-3 pb-3">
+                        <div className="flex items-center gap-1">
+                          <IconGhostButton
+                            label="Toggle Sidebar"
+                            onClick={() => setIsSidebarCollapsed((v) => !v)}
+                            disabled={isStreaming}
                           >
                             <svg
                               viewBox="0 0 24 24"
@@ -1307,77 +1258,101 @@ export default function Page() {
                               strokeLinejoin="round"
                               aria-hidden="true"
                             >
-                              <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.84 8.84a2 2 0 0 1-2.83-2.83l8.49-8.49" />
+                              <rect x="4" y="5" width="16" height="14" rx="2" />
+                              <path d="M12 5v14" />
                             </svg>
+                          </IconGhostButton>
 
-                            <input
-                              type="file"
-                              multiple
-                              className="hidden"
-                              onChange={(e) => {
-                                const files = Array.from(e.target.files || []);
-                                if (!files.length) return;
-                                setAttachedFiles((prev) => [...prev, ...files]);
-                                e.currentTarget.value = "";
-                              }}
-                              disabled={isStreaming}
-                            />
-                          </label>
-                        </Tooltip>
+                          <Tooltip text="Attach files" side="bottom">
+                            <label
+                              className={[
+                                "h-7 w-7 rounded-lg",
+                                "flex items-center justify-center",
+                                "text-white/70 hover:text-white",
+                                "hover:bg-white/6",
+                                "transition cursor-pointer",
+                              ].join(" ")}
+                              aria-label="Attach files"
+                            >
+                              <svg
+                                viewBox="0 0 24 24"
+                                className="h-5 w-5"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                aria-hidden="true"
+                              >
+                                <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.84 8.84a2 2 0 0 1-2.83-2.83l8.49-8.49" />
+                              </svg>
 
-                        <ModelDropdown
-                          value={model}
-                          options={modelChoices}
-                          onChange={(v) => {
-                            if (v.startsWith("__header__:")) return;
-                            setModel(v);
-                          }}
-                          disabled={isStreaming}
-                        />
+                              <input
+                                type="file"
+                                multiple
+                                className="hidden"
+                                onChange={(e) => {
+                                  const files = Array.from(e.target.files || []);
+                                  if (!files.length) return;
+                                  setAttachedFiles((prev) => [...prev, ...files]);
+                                  e.currentTarget.value = "";
+                                }}
+                                disabled={isStreaming}
+                              />
+                            </label>
+                          </Tooltip>
+
+                          <ModelDropdown
+                            value={model}
+                            options={modelChoices}
+                            onChange={(v) => {
+                              if (v.startsWith("__header__:")) return;
+                              setModel(v);
+                            }}
+                            disabled={isStreaming}
+                          />
+                        </div>
+
+                        <button
+                          className="h-10 w-10 rounded-full bg-blue-600 hover:bg-blue-500 transition disabled:opacity-40 flex items-center justify-center"
+                          onClick={isStreaming ? stop : send}
+                          disabled={isStreaming ? false : !canSend}
+                          title={isStreaming ? "Stop" : "Send"}
+                        >
+                          {isStreaming ? (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="white"
+                              className="w-5 h-5"
+                              aria-hidden="true"
+                            >
+                              <rect x="7" y="7" width="10" height="10" rx="2" />
+                            </svg>
+                          ) : (
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="white"
+                              strokeWidth="2"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              className="w-5 h-5"
+                              aria-hidden="true"
+                            >
+                              <path d="M2 2L13 13" />
+                              <path d="M2 2L9 22L13 13L22 9L2 2Z" />
+                            </svg>
+                          )}
+                        </button>
                       </div>
-
-                      <button
-                        className="h-10 w-10 rounded-full bg-blue-600 hover:bg-blue-500 transition disabled:opacity-40 flex items-center justify-center"
-                        onClick={isStreaming ? stop : send}
-                        disabled={isStreaming ? false : !canSend}
-                        title={isStreaming ? "Stop" : "Send"}
-                      >
-                        {isStreaming ? (
-                          // STOP icon (square)
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="white"
-                            className="w-5 h-5"
-                            aria-hidden="true"
-                          >
-                            <rect x="7" y="7" width="10" height="10" rx="2" />
-                          </svg>
-                        ) : (
-                          // SEND icon (paper plane)
-                          <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="white"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="w-5 h-5"
-                            aria-hidden="true"
-                          >
-                            <path d="M2 2L13 13" />
-                            <path d="M2 2L9 22L13 13L22 9L2 2Z" />
-                          </svg>
-                        )}
-                      </button>
-
                     </div>
                   </div>
-                </div>
 
-                <div className="mt-1 text-center text-xs text-gray-500">
-                  Multi-LLM Platform • Streaming enabled
+                  <div className="mt-1 text-center text-xs text-gray-500">
+                    Multi-LLM Platform • Streaming enabled
+                  </div>
                 </div>
               </div>
             </div>
@@ -1403,6 +1378,6 @@ export default function Page() {
           await fn();
         }}
       />
-    </main>
+    </main >
   );
 }
