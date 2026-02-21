@@ -1,7 +1,6 @@
 # main.py
 from pathlib import Path
 from dotenv import load_dotenv
-# load_dotenv()
 load_dotenv(dotenv_path=Path(__file__).resolve().with_name(".env"))
 import os
 print("DATABASE_URL =", os.getenv("DATABASE_URL"))
@@ -101,6 +100,21 @@ MODEL_OPTIONS = [
     "gemini:models/gemini-2.5-flash",
 ]
 
+VISION_MODELS = {
+    "openai:gpt-5-nano",
+    "openai:gpt-5-mini",
+    "openai:gpt-5",
+    "openrouter:openai/gpt-4o-mini",
+    "anthropic:claude-sonnet-4-6", 
+    "anthropic:claude-opus-4-6", 
+    "anthropic:claude-haiku-4-5", 
+    "gemini:models/gemini-2.5-flash-lite",
+    "gemini:models/gemini-2.5-flash",
+}
+
+ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}
+ALLOWED_IMAGE_MIMES = {"image/png", "image/jpeg", "image/webp"}
+
 DEFAULT_TEMPERATURE = 0.7
 
 TEMPERATURE_BY_MODEL: Dict[str, float] = {
@@ -168,33 +182,6 @@ async def read_upload_to_text(f: UploadFile) -> str:
         text = text[:MAX_FILE_CHARS] + "\n…(truncated)…"
 
     return text
-
-
-async def uploads_to_context(files: list[UploadFile]) -> str:
-    if not files:
-        return ""
-
-    chunks: list[str] = []
-
-    for f in files:
-        name = f.filename or "file"
-        ext = ("." + name.split(".")[-1]).lower() if "." in name else ""
-
-        if ext in ALLOWED_TEXT_EXTS:
-            content = await read_upload_to_text(f)
-            if content:
-                chunks.append(f"### File: {name}\n{content}")
-        else:
-            chunks.append(f"### File: {name}\n[Unsupported file type: {ext or 'unknown'}]")
-
-    if not chunks:
-        return ""
-
-    return (
-        "\n\n=== ATTACHED FILES ===\n\n"
-        + "\n\n".join(chunks)
-        + "\n\n=== END FILES ===\n"
-    )
 
 
 class ChatMsg(BaseModel):
@@ -280,8 +267,237 @@ def build_gemini_prompt(messages: List[ChatMsg]) -> str:
     return "\n".join(lines).strip()
 
 
+def build_openrouter_chat_messages_with_images(
+    messages: List[ChatMsg],
+    images: List[Dict[str, str]],
+) -> List[Dict[str, Any]]:
+    """
+    Builds OpenAI-compatible chat messages for OpenRouter,
+    attaching images to the LAST user message.
+    """
 
-def openai_stream(provider: str, model_name: str, req: ChatRequest):
+    out: List[Dict[str, Any]] = [
+        {"role": m.role, "content": m.content or ""}
+        for m in (messages or [])
+    ]
+
+    if not images:
+        return out
+
+    last_user_idx = None
+    for i in range(len(out) - 1, -1, -1):
+        if out[i]["role"] == "user":
+            last_user_idx = i
+            break
+
+    if last_user_idx is None:
+        return out
+
+    text = out[last_user_idx]["content"] or ""
+
+    parts: List[Dict[str, Any]] = []
+    if text:
+        parts.append({"type": "text", "text": text})
+
+    for img in images:
+        mime = img.get("mime")
+        b64 = img.get("b64")
+        if not mime or not b64:
+            continue
+
+        parts.append({
+            "type": "image_url",
+            "image_url": {
+                "url": f"data:{mime};base64,{b64}"
+            }
+        })
+
+    out[last_user_idx]["content"] = parts
+    return out
+
+
+def build_gemini_contents_with_images(
+    messages: List[ChatMsg],
+    images: List[Dict[str, str]],
+) -> Tuple[Optional[str], List[Dict[str, Any]]]:
+    """
+    Returns:
+      - system_text (string or None)
+      - contents (Gemini 'contents' array with parts)
+    Attaches images to the LAST user message as inline_data parts.
+    """
+    system_parts: List[str] = []
+    contents: List[Dict[str, Any]] = []
+
+    for m in messages or []:
+        role = m.role
+        text = (m.content or "").strip()
+
+        if role == "system":
+            if text:
+                system_parts.append(text)
+            continue
+
+        if role not in ("user", "assistant"):
+            continue
+
+        gemini_role = "user" if role == "user" else "model"
+        parts: List[Dict[str, Any]] = []
+        if text:
+            parts.append({"text": text})
+
+        contents.append({"role": gemini_role, "parts": parts})
+
+    system_text = "\n\n".join(system_parts).strip() if system_parts else None
+
+    if not images:
+        return system_text, contents
+
+    last_user_idx = None
+    for i in range(len(contents) - 1, -1, -1):
+        if contents[i].get("role") == "user":
+            last_user_idx = i
+            break
+    if last_user_idx is None:
+        return system_text, contents
+
+    if not contents[last_user_idx].get("parts"):
+        contents[last_user_idx]["parts"] = [{"text": ""}]
+
+    for img in images:
+        mime = (img.get("mime") or "").lower()
+        b64 = img.get("b64") or ""
+        if not mime or not b64:
+            continue
+
+        contents[last_user_idx]["parts"].append({
+            "inline_data": {
+                "mime_type": mime,   # image/png | image/jpeg | image/webp
+                "data": b64,         # base64 string
+            }
+        })
+
+    return system_text, contents
+
+def build_anthropic_messages_with_images(
+    chat: List[Dict[str, str]],
+    images: List[Dict[str, str]],
+) -> List[Dict[str, Any]]:
+    """
+    Converts text messages into Anthropic block format.
+    If images exist, attaches them to the LAST user message.
+    """
+
+    out: List[Dict[str, Any]] = []
+
+    for m in chat:
+        role = m.get("role")
+        if role not in ("user", "assistant"):
+            continue
+
+        text = (m.get("content") or "").strip()
+
+        out.append({
+            "role": role,
+            "content": [
+                {"type": "text", "text": text}
+            ] if text else []
+        })
+
+    if not images:
+        return out
+
+    last_user_idx = None
+    for i in range(len(out) - 1, -1, -1):
+        if out[i]["role"] == "user":
+            last_user_idx = i
+            break
+
+    if last_user_idx is None:
+        return out
+
+    if not out[last_user_idx]["content"]:
+        out[last_user_idx]["content"] = [{"type": "text", "text": ""}]
+
+    for img in images:
+        mime = (img.get("mime") or "").lower()
+        b64 = img.get("b64") or ""
+
+        if not mime or not b64:
+            continue
+
+        out[last_user_idx]["content"].append({
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": mime,  # image/png | image/jpeg | image/webp
+                "data": b64
+            }
+        })
+
+    return out
+
+
+def anthropic_stream(
+    model_name: str,
+    req: ChatRequest,
+    images: List[Dict[str, str]] | None = None,
+):
+    images = images or []
+
+    client = get_anthropic_client()
+    temp = get_temperature(req.model, req.temperature)
+
+    system_text, chat = split_system_and_chat(req.messages)
+    messages_for_claude = build_anthropic_messages_with_images(chat, images)
+
+    kwargs: Dict[str, Any] = {
+        "model": model_name,
+        "max_tokens": 2048,
+        "temperature": temp,
+        "messages": messages_for_claude,
+    }
+
+    if system_text:
+        kwargs["system"] = system_text
+
+    with client.messages.stream(**kwargs) as stream:
+        for text in stream.text_stream:
+            if text:
+                yield sse({"t": text})
+
+    yield sse({"done": True})
+
+
+
+
+def build_openai_responses_input(req: ChatRequest, images: list[dict]):
+    out = [{"role": m.role, "content": m.content or ""} for m in (req.messages or [])]
+    if not images:
+        return out
+
+    last_user_idx = None
+    for i in range(len(out) - 1, -1, -1):
+        if out[i]["role"] == "user":
+            last_user_idx = i
+            break
+    if last_user_idx is None:
+        return out
+
+    text = out[last_user_idx]["content"] or ""
+    parts = [{"type": "input_text", "text": text}]
+
+    for img in images:
+        parts.append({
+            "type": "input_image",
+            "image_url": f"data:{img['mime']};base64,{img['b64']}",
+        })
+
+    out[last_user_idx]["content"] = parts
+    return out
+
+def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list[dict] | None = None):
+    images = images or []
     client = get_openai_compatible_client(provider)
     provider_model = req.model
     temp = get_temperature(provider_model, req.temperature)
@@ -295,7 +511,7 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest):
         print(f"[openai_stream]   msg[{i}] role={m.role}, len={len(m.content or '')}ch")
 
     if is_gpt5:
-        input_msgs = [{"role": m.role, "content": m.content or ""} for m in (req.messages or [])]
+        input_msgs = build_openai_responses_input(req, images)
         print(f"[openai_stream:gpt5] calling responses.create with {len(input_msgs)} msgs")
 
         try:
@@ -303,7 +519,6 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest):
                 model=model_name,
                 input=input_msgs,
                 stream=True,
-                # Remove max_output_tokens entirely for now to rule it out
             )
             print(f"[openai_stream:gpt5] stream created OK: {type(stream)}")
         except Exception as e:
@@ -318,7 +533,6 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest):
             event_count += 1
             event_type = getattr(event, "type", None)
 
-            # Print ALL events unconditionally so we see everything
             print(f"[openai_stream:gpt5] event[{event_count}] type={event_type!r} raw={repr(event)[:300]}")
 
             if event_type == "response.output_text.delta":
@@ -332,12 +546,20 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest):
         yield sse({"done": True})
         return
 
-    # All other providers: chat completions API
     print(f"[openai_stream] using chat.completions API")
+
+    if provider == "openrouter" and images:
+        print("[openai_stream] using multimodal messages for OpenRouter")
+        messages_payload = build_openrouter_chat_messages_with_images(
+            req.messages,
+            images,
+        )
+    else:
+        messages_payload = sanitize_openai_messages(req.messages)
 
     kwargs: Dict[str, Any] = {
         "model": model_name,
-        "messages": sanitize_openai_messages(req.messages),
+        "messages": messages_payload,
         "stream": True,
     }
 
@@ -434,38 +656,35 @@ def _extract_delta_text(delta_obj: Any) -> str | None:
     return None
 
 
-def anthropic_stream(model_name: str, req: ChatRequest):
-    client = get_anthropic_client()
-    temp = get_temperature(req.model, req.temperature)
-    system_text, chat = split_system_and_chat(req.messages)
-
-    kwargs = {
-        "model": model_name,
-        "max_tokens": 2048,
-        "temperature": temp,
-        "messages": [m for m in chat if m["role"] in ("user", "assistant")],
-    }
-
-    if system_text:
-        kwargs["system"] = [{"type": "text", "text": system_text}]
-
-    with client.messages.stream(**kwargs) as stream:
-        for text in stream.text_stream:
-            if text:
-                yield sse({"t": text})
-
-    yield sse({"done": True})
-
-
-def gemini_stream(model_name: str, req: ChatRequest):
+def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]] | None = None):
+    images = images or []
     client = get_gemini_client()
     temp = get_temperature(req.model, req.temperature)
-    prompt = build_gemini_prompt(req.messages)
+
+    if not images:
+        prompt = build_gemini_prompt(req.messages)
+        stream = client.models.generate_content_stream(
+            model=model_name,
+            contents=prompt,
+            config={"temperature": temp},
+        )
+        for chunk in stream:
+            text = getattr(chunk, "text", None)
+            if text:
+                yield sse({"t": text})
+        yield sse({"done": True})
+        return
+
+    system_text, contents = build_gemini_contents_with_images(req.messages, images)
+
+    cfg: Dict[str, Any] = {"temperature": temp}
+    if system_text:
+        cfg["system_instruction"] = system_text
 
     stream = client.models.generate_content_stream(
         model=model_name,
-        contents=prompt,
-        config={"temperature": temp},
+        contents=contents,
+        config=cfg,
     )
 
     for chunk in stream:
@@ -589,6 +808,94 @@ async def get_chat(chat_id: str, authorization: str | None = Header(default=None
             messages=[ChatMsg(role=m.role, content=m.content) for m in chat.messages],
         )
 
+import base64
+
+async def split_uploads(files: list[UploadFile]) -> tuple[str, list[dict], list[str]]:
+    """
+    Returns:
+      - file_context (string for text/pdf/code)
+      - images (list of {filename, mime, b64})
+      - filenames (all filenames)
+    """
+    if not files:
+        return "", [], []
+
+    chunks: list[str] = []
+    images: list[dict] = []
+    filenames: list[str] = []
+
+    for f in files:
+        name = f.filename or "file"
+        filenames.append(name)
+
+        ext = ("." + name.split(".")[-1]).lower() if "." in name else ""
+        ctype = (f.content_type or "").lower()
+
+        data = await f.read()
+        if not data:
+            continue
+
+        if len(data) > MAX_FILE_BYTES:
+            chunks.append(f"### File: {name}\n[Skipped: file too large]")
+            continue
+
+        # IMAGE
+        if ext in ALLOWED_IMAGE_EXTS or ctype in ALLOWED_IMAGE_MIMES:
+            if ctype not in ALLOWED_IMAGE_MIMES:
+                if ext in (".jpg", ".jpeg"):
+                    ctype = "image/jpeg"
+                elif ext == ".png":
+                    ctype = "image/png"
+                elif ext == ".webp":
+                    ctype = "image/webp"
+
+            if ctype not in ALLOWED_IMAGE_MIMES:
+                chunks.append(f"### File: {name}\n[Unsupported image mime: {ctype or 'unknown'}]")
+                continue
+
+            b64 = base64.b64encode(data).decode("utf-8")
+            images.append({"filename": name, "mime": ctype, "b64": b64})
+            continue
+
+        if ext in ALLOWED_TEXT_EXTS:
+            content = await read_upload_bytes_to_text(name, data)
+            if content:
+                chunks.append(f"### File: {name}\n{content}")
+            continue
+
+        chunks.append(f"### File: {name}\n[Unsupported file type: {ext or 'unknown'}]")
+
+    file_context = ""
+    if chunks:
+        file_context = (
+            "\n\n=== ATTACHED FILES ===\n\n"
+            + "\n\n".join(chunks)
+            + "\n\n=== END FILES ===\n"
+        )
+
+    return file_context, images, filenames
+
+def read_upload_bytes_to_text(name: str, data: bytes) -> str:
+    ext = ("." + name.split(".")[-1]).lower() if "." in name else ""
+
+    try:
+        if ext == ".pdf":
+            reader = PdfReader(BytesIO(data))
+            parts: list[str] = []
+            for page in reader.pages:
+                t = page.extract_text() or ""
+                if t.strip():
+                    parts.append(t)
+            text = "\n".join(parts).strip()
+        else:
+            text = data.decode("utf-8", errors="replace")
+    except Exception as e:
+        return f"[Failed reading {name}: {type(e).__name__}]"
+
+    if len(text) > MAX_FILE_CHARS:
+        text = text[:MAX_FILE_CHARS] + "\n…(truncated)…"
+    return text
+
 
 def build_general_task_prompt(user_message: str) -> str:
     task = (user_message or "").strip()
@@ -609,11 +916,7 @@ You are a helpful assistant.
 """.strip()
 
 
-def build_file_task_prompt(
-    user_message: str,
-    file_context: str,
-    filenames: list[str],
-) -> str:
+def build_file_task_prompt(user_message: str, file_context: str, filenames: list[str], has_images: bool) -> str:
     files_list = "\n".join([f"- {n}" for n in filenames]) if filenames else "- (none)"
 
     task = (user_message or "").strip()
@@ -628,6 +931,10 @@ You are a senior software engineer and technical writer.
 
 ## Attached files
 {files_list}
+
+## Notes about images
+- If images are attached, analyze them too (UI screenshots, diagrams, photos, etc.).
+- If text in an image is too small/blurred to read, say so.
 
 ## Rules
 - Use ONLY the content inside **ATTACHED FILES** as your source of truth. If something is missing, say so explicitly.
@@ -687,14 +994,23 @@ async def chat_stream_with_files(
             media_type="text/event-stream",
 )
 
-    file_context = await uploads_to_context(files) if has_files else ""
-    filenames = [(f.filename or "file") for f in files]
+    file_context, images, filenames = await split_uploads(files) if has_files else ("", [], [])
+    has_images = len(images) > 0
+
+    if has_images and model not in VISION_MODELS:
+        return StreamingResponse(
+            iter([sse({"error": "Selected model doesn't support images. Please choose a vision model.",
+                    "error_short": "Model doesn't support images."}),
+                sse({"done": True})]),
+            media_type="text/event-stream",
+        )
 
     if has_files:
         user_payload = build_file_task_prompt(
             user_message=user_text,
             file_context=file_context,
             filenames=filenames,
+            has_images=has_images,
         )
     else:
         user_payload = build_general_task_prompt(user_text)
@@ -822,13 +1138,13 @@ async def chat_stream_with_files(
 
             def sync_iter():
                 if provider in ("openai", "openrouter", "groq", "nebius"):
-                    yield from openai_stream(provider, model_name, llm_req)
+                    yield from openai_stream(provider, model_name, llm_req, images=images)
                     return
                 if provider == "anthropic":
-                    yield from anthropic_stream(model_name, llm_req)
+                    yield from anthropic_stream(model_name, llm_req, images=images)
                     return
                 if provider == "gemini":
-                    yield from gemini_stream(model_name, llm_req)
+                    yield from gemini_stream(model_name, llm_req, images=images)
                     return
                 raise RuntimeError(f"Unknown provider: {provider}")
 

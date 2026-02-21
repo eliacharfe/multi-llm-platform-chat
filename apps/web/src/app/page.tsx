@@ -1242,6 +1242,7 @@ export default function Page() {
                                   type="file"
                                   multiple
                                   accept={[
+                                    "image/*",
                                     ".txt", ".md", ".json", ".csv", ".log",
                                     ".yaml", ".yml",
                                     ".dart", ".py", ".js", ".ts", ".tsx",
