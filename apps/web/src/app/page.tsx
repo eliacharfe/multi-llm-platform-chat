@@ -1207,7 +1207,11 @@ export default function Page() {
 
             {/* COMPOSER (bottom bar) — FIXED OUTSIDE SCROLL */}
             <div
-              className="fixed bottom-0 z-50 bg-[#252525]"
+              className={[
+                "fixed bottom-0 bg-[#252525] transition-opacity",
+                "z-30",
+                isSmall && !isSidebarCollapsed ? "opacity-0 pointer-events-none" : "opacity-100",
+              ].join(" ")}
               style={{
                 left: isSmall ? 0 : isSidebarCollapsed ? 56 : 290,
                 right: 0,
