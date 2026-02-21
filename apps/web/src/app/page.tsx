@@ -576,9 +576,28 @@ export default function Page() {
           }
 
           if (obj.error) {
-            if (DEBUG_SSE) console.error("[sse] error received:", obj.error);
-            // (your existing error handling)
-            continue;
+            const short = String(obj.error_short ?? obj.error ?? "Unknown error");
+
+            if (DEBUG_SSE) console.error("[sse] error received:", { error: obj.error, error_short: obj.error_short });
+
+            setMessages((prev) => {
+              const copy = [...prev];
+              const last = copy[copy.length - 1];
+              const errText = `⚠️ ${short}`;
+
+              if (last?.role === "assistant" && (last.content || "") === "") {
+                copy[copy.length - 1] = { ...last, content: errText };
+                return copy;
+              }
+              if (last?.role === "assistant") {
+                copy[copy.length - 1] = { ...last, content: `${last.content}\n\n${errText}` };
+                return copy;
+              }
+              return [...copy, { role: "assistant", content: errText }];
+            });
+
+            finished = true;
+            return;
           }
 
           const token: string = obj.t ?? "";
@@ -721,21 +740,20 @@ export default function Page() {
     };
   }, []);
 
-  const [isExtraSmall, setIsExtraSmall] = useState(false);
+  function detectDir(text: string): "rtl" | "ltr" {
+    const s = (text || "").trim();
+    if (!s) return "ltr";
 
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 600px)");
-    const apply = () => setIsExtraSmall(mq.matches);
+    const rtlChars = s.match(/[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g)?.length ?? 0;
+    const ltrChars = s.match(/[A-Za-z]/g)?.length ?? 0;
+    if (rtlChars > ltrChars) return "rtl";
+    return "ltr";
+  }
 
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
+  // optional: for better punctuation/number mixing inside RTL text
+  function unicodeBidiFor(dir: "rtl" | "ltr") {
+    return dir === "rtl" ? "plaintext" : "normal";
+  }
 
   return (
     <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
@@ -1062,40 +1080,44 @@ export default function Page() {
                         const isUser = m.role === "user";
                         const isAssistant = m.role === "assistant";
 
+                        const dir = detectDir(m.content);
+                        const isRTL = dir === "rtl";
+
                         return (
                           <div
                             key={idx}
                             className={`flex ${isUser ? "justify-end" : "justify-start"}`}
                           >
                             {isUser ? (
-                              <div className="max-w-[75%]">
+                              <div className="max-w-[75%]" dir={dir} style={{ unicodeBidi: isRTL ? "plaintext" : "normal" }}>
                                 {/* Bubble */}
-                                <div className="rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm">
+                                <div
+                                  className={[
+                                    "rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm",
+                                    isRTL ? "text-right" : "text-left",
+                                  ].join(" ")}
+                                >
                                   <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
                                     {m.content}
                                   </div>
                                 </div>
 
-                                <div className="mt-1 flex justify-end">
+                                <div className={["mt-1 flex", isRTL ? "justify-start" : "justify-end"].join(" ")}>
                                   <CopyButton text={m.content} />
                                 </div>
                               </div>
                             ) : (
                               <div className="w-full max-w-3xl">
                                 <div
-                                  className="
-                            text-sm
-                            leading-relaxed
-                            text-gray-100
-                            [&_p]:my-3
-                            [&_ul]:my-3
-                            [&_ol]:my-3
-                            [&_li]:my-1
-                            [&_h1]:mt-6 [&_h1]:mb-3
-                            [&_h2]:mt-5 [&_h2]:mb-2
-                            [&_h3]:mt-4 [&_h3]:mb-2
-                            [&_pre]:my-4
-                          "
+                                  dir={dir}
+                                  style={{ unicodeBidi: isRTL ? "plaintext" : "normal" }}
+                                  className={[
+                                    "text-sm leading-relaxed text-gray-100",
+                                    isRTL ? "text-right" : "text-left",
+                                    "[&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1",
+                                    "[&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:mt-4 [&_h3]:mb-2",
+                                    "[&_pre]:my-4",
+                                  ].join(" ")}
                                 >
                                   {isStreaming &&
                                     idx === messages.length - 1 &&
@@ -1110,20 +1132,20 @@ export default function Page() {
                                     <ReactMarkdown
                                       remarkPlugins={[remarkGfm]}
                                       components={{
-                                        code({ className, children, node, ...props }) {
+                                        code({ className, children, ...props }) {
                                           const lang =
                                             (className || "").match(/language-(\w+)/)?.[1] || "";
                                           const isBlock = /language-\w+/.test(className || "");
 
                                           if (isBlock) {
                                             const raw = childrenToText(children).replace(/\n$/, "");
-                                            const grammar = Prism.languages[lang];
+                                            const grammar = (Prism.languages as any)[lang];
                                             const highlighted = grammar
                                               ? Prism.highlight(raw, grammar, lang)
                                               : raw;
 
                                             return (
-                                              <div className="relative my-3">
+                                              <div className="relative my-3" dir="ltr">
                                                 <div className="absolute right-2 top-2 flex items-center gap-2">
                                                   {lang && (
                                                     <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
@@ -1136,7 +1158,11 @@ export default function Page() {
                                                     title="Copy code"
                                                   />
                                                 </div>
-                                                <pre className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto text-sm">
+
+                                                <pre
+                                                  dir="ltr"
+                                                  className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto text-sm"
+                                                >
                                                   <code
                                                     className={className}
                                                     dangerouslySetInnerHTML={{ __html: highlighted }}
@@ -1146,8 +1172,10 @@ export default function Page() {
                                             );
                                           }
 
+                                          // inline code should also stay LTR
                                           return (
                                             <code
+                                              dir="ltr"
                                               className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
                                               {...props}
                                             >
@@ -1163,7 +1191,7 @@ export default function Page() {
                                 </div>
 
                                 {isAssistant && (m.content?.length ?? 0) > 0 ? (
-                                  <div className="mt-2 flex justify-start">
+                                  <div className={["mt-2 flex", isRTL ? "justify-end" : "justify-start"].join(" ")}>
                                     <CopyButton text={m.content} />
                                   </div>
                                 ) : null}

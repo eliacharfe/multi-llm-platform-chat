@@ -212,6 +212,18 @@ class ChatRequest(BaseModel):
 def sse(payload: Dict[str, Any]) -> str:
     return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
 
+def short_error_message(err: str) -> str:
+    s = (err or "").strip()
+
+    if "RESOURCE_EXHAUSTED" in s or "Quota exceeded" in s:
+        return "Gemini quota exceeded (rate limit). Try again later or switch model."
+
+    if "Invalid/expired token" in s or "Missing Authorization" in s:
+        return "Authentication error. Please sign in again."
+
+    first = s.splitlines()[0] if s else "Unknown error"
+    return (first[:140] + "…") if len(first) > 140 else first
+
 
 def parse_provider_model(provider_model: str) -> Tuple[str, str]:
     if ":" not in provider_model:
@@ -671,9 +683,9 @@ async def chat_stream_with_files(
 
     if not user_text and not has_files:
         return StreamingResponse(
-            iter([sse({"error": "Please type a message."}), sse({"done": True})]),
+            iter([sse({"error": "Please type a message.", "error_short": "Please type a message."}), sse({"done": True})]),
             media_type="text/event-stream",
-        )
+)
 
     file_context = await uploads_to_context(files) if has_files else ""
     filenames = [(f.filename or "file") for f in files]
@@ -767,7 +779,7 @@ async def chat_stream_with_files(
 
                 if not chat:
                     print(f"[gen] ❌ chat {chat_id} not found for user {user_id}")
-                    yield sse({"error": "Chat not found"})
+                    yield sse({"error": "Chat not found", "error_short": "Chat not found."})
                     yield sse({"done": True})
                     return
 
@@ -863,7 +875,9 @@ async def chat_stream_with_files(
                 await flush(True)
             except Exception as fe:
                 print(f"[gen] ❌ flush also failed: {fe}")
-            yield sse({"error": f"{type(e).__name__}: {str(e)}"})
+
+            full = f"{type(e).__name__}: {str(e)}"
+            yield sse({"error": full, "error_short": short_error_message(full)})
             yield sse({"done": True})
 
     return StreamingResponse(gen(), media_type="text/event-stream")
