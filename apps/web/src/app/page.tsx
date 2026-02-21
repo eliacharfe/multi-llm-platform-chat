@@ -990,7 +990,8 @@ export default function Page() {
             >
               <div className="mx-auto max-w-3xl">
                 {messages.length === 0 ? (
-                  <div className="min-h-[55vh] flex items-center justify-center">
+                  <div className="flex items-center justify-center py-20 ">
+
                     <div className="w-full max-w-3xl px-2">
                       <div className="relative text-center">
 
