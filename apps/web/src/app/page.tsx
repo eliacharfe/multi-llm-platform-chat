@@ -5,13 +5,15 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypePrism from "rehype-prism-plus";
-
 import * as Prism from "prismjs";
 import "@/lib/prism";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 
 import CopyButton from "@/components/ui/CopyButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import ModelDropdown from "@/components/ui/ModelDropdown";
+import AuthDialog from "@/components/ui/AuthDialog";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -202,6 +204,24 @@ function getUserId(): string {
 export default function Page() {
   const DEFAULT_MODEL = "openai:gpt-5-mini";
 
+  const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, () => {
+      setAuthReady(true);
+    });
+  }, []);
+
+  const [authOpen, setAuthOpen] = useState(false);
+  const [userLabel, setUserLabel] = useState("Sign in");
+
+  useEffect(() => {
+    return onAuthStateChanged(auth, (u) => {
+      if (!u) setUserLabel("Sign in");
+      else setUserLabel(u.displayName || u.email || "Account");
+    });
+  }, []);
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   const [model, setModel] = useState(DEFAULT_MODEL);
@@ -284,13 +304,22 @@ export default function Page() {
   }, []);
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
+    const token = await auth.currentUser?.getIdToken();
+
+    const headers: Record<string, string> = {
+      ...(init?.headers as any),
+    };
+
+    const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+    if (!isFormData) headers["Content-Type"] = "application/json";
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
     const res = await fetch(`${apiUrl}${path}`, {
       ...init,
-      headers: {
-        "Content-Type": "application/json",
-        "X-User-Id": getUserId(),
-        ...(init?.headers ?? {}),
-      },
+      headers,
     });
 
     if (!res.ok) {
@@ -363,8 +392,15 @@ export default function Page() {
   }
 
   useEffect(() => {
+    if (!authReady) return;
+    if (!auth.currentUser) {
+      setChats([]);
+      setActiveChatId(null);
+      setMessages([]);
+      return;
+    }
     refreshChats().catch(() => { });
-  }, []);
+  }, [authReady]);
 
   async function send() {
     if (!canSend) return;
@@ -405,11 +441,13 @@ export default function Page() {
         fd.append("files", f);
       }
 
+      const token = await auth.currentUser?.getIdToken();
+
       const res = await fetch(`${apiUrl}/v1/chat/stream_with_files`, {
         method: "POST",
-        headers: {
-          "X-User-Id": getUserId(),
-        },
+        headers: token
+          ? { Authorization: `Bearer ${token}` }
+          : undefined,
         signal: ac.signal,
         body: fd,
       });
@@ -818,8 +856,13 @@ export default function Page() {
 
               {/* Footer (ALWAYS VISIBLE) */}
               <div className="shrink-0 pt-4">
-                <button className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center gap-2">
-                  <span>Eliachar Feig</span>
+                <button
+                  type="button"
+                  onClick={() => setAuthOpen(true)}
+                  className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center justify-between gap-2"
+                >
+                  <span className="truncate">{userLabel}</span>
+                  <span className="text-xs text-gray-400">{auth.currentUser ? "●" : "○"}</span>
                 </button>
               </div>
             </div>
@@ -1175,6 +1218,8 @@ export default function Page() {
         </section>
       </div>
 
+
+      <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
 
       <ConfirmDialog
         open={confirmOpen}

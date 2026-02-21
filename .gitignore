@@ -70,6 +70,8 @@ env/
 *.sqlite3
 *.db
 
+apps/api/secrets/
+
 ############################
 # Environment variables
 ############################

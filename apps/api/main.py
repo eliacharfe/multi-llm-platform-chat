@@ -12,21 +12,19 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi import status
 from pydantic import BaseModel
-from fastapi import UploadFile, File, Form
 from io import BytesIO
 from pypdf import PdfReader
 
 import asyncio
 import time
 from datetime import datetime
-from fastapi import Header, HTTPException
-
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, desc, delete
 from sqlalchemy.orm import selectinload
-
 from fastapi import UploadFile, File, Form, Header, HTTPException
-import json
-from typing import List, Optional
+
+import firebase_admin
+from firebase_admin import credentials, auth as fb_auth
 
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
 
@@ -39,9 +37,6 @@ from clients import (
 
 app = FastAPI()
 
-from fastapi.middleware.cors import CORSMiddleware
-
-app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -54,6 +49,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+
+_sa = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+if not _sa:
+    raise RuntimeError("Missing FIREBASE_SERVICE_ACCOUNT_JSON env var")
+
+try:
+    sa_obj = json.loads(_sa)
+    cred = credentials.Certificate(sa_obj)
+except json.JSONDecodeError:
+    cred = credentials.Certificate(_sa)
+
+if not firebase_admin._apps:
+    firebase_admin.initialize_app(cred)
+
+def require_user_id_from_auth(authorization: str | None) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing Authorization Bearer token")
+
+    token = authorization.split(" ", 1)[1].strip()
+    try:
+        decoded = fb_auth.verify_id_token(token)
+        uid = decoded.get("uid")
+        if not uid:
+            raise HTTPException(status_code=401, detail="Invalid token (no uid)")
+        return uid
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid/expired token")
+
 
 MODEL_OPTIONS = [
     "openai:gpt-5-nano",
@@ -93,18 +118,6 @@ UNSUPPORTED_PARAMS_BY_MODEL: Dict[str, set] = {
     "gpt-5-nano": {"temperature"},
     "gpt-5-mini": {"temperature"},
     "gpt-5": {"temperature"},
-}
-
-MAX_FILE_BYTES = 25_000_000   # 25MB per file
-MAX_FILE_CHARS = 30_000       # truncate extracted text safely
-
-ALLOWED_TEXT_EXTS = {
-    ".txt", ".md", ".json", ".csv", ".log",
-    ".yaml", ".yml",
-    ".dart", ".py", ".js", ".ts", ".tsx",
-    ".html", ".css", ".xml",
-    ".swift",
-    ".pdf",
 }
 
 MAX_FILE_BYTES = 25_000_000   # 25MB per file
@@ -341,12 +354,6 @@ def health():
 async def _startup():
     await init_db()
 
-def require_user_id(x_user_id: str | None) -> str:
-    if not x_user_id:
-        raise HTTPException(status_code=401, detail="Missing X-User-Id")
-    return x_user_id.strip()
-
-
 class CreateChatRequest(BaseModel):
     model: str
 
@@ -378,8 +385,8 @@ def derive_title_from_messages(msgs: List[ChatMsg]) -> str:
 
 
 @app.post("/v1/chats", response_model=CreateChatResponse)
-async def create_chat(req: CreateChatRequest, x_user_id: str | None = Header(default=None)):
-    user_id = require_user_id(x_user_id)
+async def create_chat(req: CreateChatRequest, authorization: str | None = Header(default=None)):
+    user_id = require_user_id_from_auth(authorization)
 
     if req.model not in MODEL_OPTIONS:
         raise HTTPException(400, f"Unsupported model: {req.model}")
@@ -393,8 +400,8 @@ async def create_chat(req: CreateChatRequest, x_user_id: str | None = Header(def
 
 
 @app.get("/v1/chats", response_model=ChatListResponse)
-async def list_chats(x_user_id: str | None = Header(default=None)):
-    user_id = require_user_id(x_user_id)
+async def list_chats(authorization: str | None = Header(default=None)):
+    user_id = require_user_id_from_auth(authorization) 
 
     async with SessionLocal() as session:
         rows = (await session.execute(
@@ -411,10 +418,9 @@ async def list_chats(x_user_id: str | None = Header(default=None)):
             ]
         )
 
-
 @app.delete("/v1/chats/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_chat(chat_id: str, x_user_id: str | None = Header(default=None)):
-    user_id = require_user_id(x_user_id)
+async def delete_chat(chat_id: str, authorization: str | None = Header(default=None)):
+    user_id = require_user_id_from_auth(authorization)
 
     async with SessionLocal() as session:
         chat = (await session.execute(
@@ -422,22 +428,17 @@ async def delete_chat(chat_id: str, x_user_id: str | None = Header(default=None)
         )).scalars().first()
 
         if not chat:
-            raise HTTPException(404, "Chat not found")
+            raise HTTPException(status_code=404, detail="Chat not found")
 
-        await session.execute(
-            delete(MessageRow).where(MessageRow.chat_id == chat_id)
-        )
-
+        await session.execute(delete(MessageRow).where(MessageRow.chat_id == chat_id))
         await session.delete(chat)
-
         await session.commit()
-
     return
-    
 
+    
 @app.get("/v1/chats/{chat_id}", response_model=ChatWithMessagesResponse)
-async def get_chat(chat_id: str, x_user_id: str | None = Header(default=None)):
-    user_id = require_user_id(x_user_id)
+async def get_chat(chat_id: str, authorization: str | None = Header(default=None)):
+    user_id = require_user_id_from_auth(authorization)  # 🔐 Firebase UID
 
     async with SessionLocal() as session:
         chat = (await session.execute(
@@ -447,7 +448,7 @@ async def get_chat(chat_id: str, x_user_id: str | None = Header(default=None)):
         )).scalars().first()
 
         if not chat:
-            raise HTTPException(404, "Chat not found")
+            raise HTTPException(status_code=404, detail="Chat not found")
 
         return ChatWithMessagesResponse(
             id=chat.id,
@@ -455,7 +456,6 @@ async def get_chat(chat_id: str, x_user_id: str | None = Header(default=None)):
             model=chat.model,
             messages=[ChatMsg(role=m.role, content=m.content) for m in chat.messages],
         )
-
 
 
 def build_general_task_prompt(user_message: str) -> str:
@@ -519,11 +519,11 @@ async def chat_stream_with_files(
     model: str = Form(...),
     temperature: Optional[float] = Form(None),
     message: str = Form(""),
-    messages: str = Form("[]"),  # JSON string of Msg[]
+    messages: str = Form("[]"),
     files: List[UploadFile] = File(default=[]),
-    x_user_id: str | None = Header(default=None),
+    authorization: str | None = Header(default=None),
 ):
-    user_id = require_user_id(x_user_id)
+    user_id = require_user_id_from_auth(authorization)  # 🔐 Firebase UID
 
     if model not in MODEL_OPTIONS:
         return StreamingResponse(
