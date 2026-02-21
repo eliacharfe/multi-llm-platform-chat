@@ -28,6 +28,10 @@ from firebase_admin import credentials, auth as fb_auth
 
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
 
+import openai, inspect
+print("OPENAI_VERSION =", getattr(openai, "__version__", "unknown"))
+print("OPENAI_FILE =", getattr(openai, "__file__", "unknown"))
+
 from clients import (
     get_openai_compatible_client,
     get_anthropic_client,
