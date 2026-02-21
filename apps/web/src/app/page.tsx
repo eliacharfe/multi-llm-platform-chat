@@ -1000,7 +1000,7 @@ export default function Page() {
                         </div>
 
                         <div className="relative">
-                          <div className="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight">
+                          <div className="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight lg:pt-20 sm:pt-1 md:pt-10">
                             Welcome back!
                           </div>
 
@@ -1028,7 +1028,7 @@ export default function Page() {
                                 s: "When to choose each in real projects",
                               },
                             ]
-                              .slice(0, isExtraSmall ? 3 : 4)
+                              // .slice(0, isExtraSmall ? 3 : 4)
                               .map((x) => (
                                 <button
                                   key={x.t}
