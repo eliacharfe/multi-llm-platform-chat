@@ -278,9 +278,16 @@ export default function Page() {
   }
 
   const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
+  // const canSend = useMemo(
+  //   () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
+  //   [input, attachedFiles.length, isStreaming]
+  // );
   const canSend = useMemo(
-    () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
-    [input, attachedFiles.length, isStreaming]
+    () =>
+      auth.currentUser &&
+      (input.trim().length > 0 || attachedFiles.length > 0) &&
+      !isStreaming,
+    [input, attachedFiles.length, isStreaming, authReady]
   );
 
   const filteredChats = useMemo(() => {
@@ -321,6 +328,11 @@ export default function Page() {
       ...init,
       headers,
     });
+
+    if (res.status === 401) {
+      setAuthOpen(true);
+      return undefined as T; // prevents crash / red screen
+    }
 
     if (!res.ok) {
       const txt = await res.text().catch(() => "");
@@ -403,6 +415,11 @@ export default function Page() {
   }, [authReady]);
 
   async function send() {
+    if (!auth.currentUser) {
+      setAuthOpen(true);
+      return;
+    }
+
     if (!canSend) return;
 
     const userText =
@@ -451,6 +468,14 @@ export default function Page() {
         signal: ac.signal,
         body: fd,
       });
+
+      if (res.status === 401) {
+        setAuthOpen(true);
+        setIsStreaming(false);
+        isStreamingRef.current = false;
+        abortRef.current = null;
+        return;
+      }
 
       if (!res.ok || !res.body) {
         const txt = await res.text().catch(() => "");
@@ -821,7 +846,7 @@ export default function Page() {
                             onClick={(e) => {
                               e.stopPropagation();
 
-                              const id = c.id; // capture NOW
+                              const id = c.id;
 
                               openConfirm({
                                 title: "Delete chat?",
@@ -944,8 +969,8 @@ export default function Page() {
                             {isUser ? (
                               <div className="max-w-[75%]">
                                 <div className="text-sm leading-relaxed text-gray-100">
-                                  {/* {m.content} */}
-                                  <ReactMarkdown
+                                  {m.content}
+                                  {/* <ReactMarkdown
                                     remarkPlugins={[remarkGfm]}
                                     rehypePlugins={[rehypePrism]}
                                     components={{
@@ -993,7 +1018,7 @@ export default function Page() {
                                     }}
                                   >
                                     {m.content}
-                                  </ReactMarkdown>
+                                  </ReactMarkdown> */}
                                 </div>
                                 <div className="mt-2 flex justify-end">
                                   <CopyButton text={m.content} />
