@@ -16,6 +16,7 @@ import ModelDropdown from "@/components/ui/ModelDropdown";
 import AuthDialog from "@/components/ui/AuthDialog";
 import Tooltip from "@/components/ui/Tooltip";
 import IconGhostButton from "@/components/ui/IconGhostButton";
+import LogoSplash from "@/components/ui/LogoSplash";
 
 type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -196,7 +197,16 @@ function formatChatTime(iso: string) {
 export default function Page() {
   const DEFAULT_MODEL = "gemini:models/gemini-2.5-flash";
 
+  const [showSplash, setShowSplash] = useState(true);
   const [authReady, setAuthReady] = useState(false);
+
+  useEffect(() => {
+    if (!authReady) return;
+
+    const minMs = 3000;
+    const t = window.setTimeout(() => setShowSplash(false), minMs);
+    return () => window.clearTimeout(t);
+  }, [authReady]);
 
   useEffect(() => {
     return onAuthStateChanged(auth, () => {
@@ -756,7 +766,12 @@ export default function Page() {
   }
 
   return (
+    // <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
     <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
+      <LogoSplash
+        show={showSplash}
+        text={authReady ? "Preparing your workspace…" : "Initializing…"}
+      />
 
       {isSmall ? (
         <button
@@ -779,9 +794,9 @@ export default function Page() {
         title="Multi LLM Chat"
       >
         <img
-          src="/multi-llm-chat-logo.png"
+          src="/multi-llm-logo.png"
           alt="Multi LLM Chat"
-          className="h-10 w-10"
+          className="h-7 w-7"
         />
       </a>
 

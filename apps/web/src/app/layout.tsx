@@ -38,6 +38,18 @@ export const metadata: Metadata = {
   authors: [{ name: "Eliachar Feig" }],
   creator: "Eliachar Feig",
   metadataBase: new URL("https://multi-llm-platform-premium.vercel.app"),
+
+  icons: {
+    icon: [
+      { url: "/multi-llm-logo.png", sizes: "32x32", type: "image/png" },
+      { url: "/multi-llm-logo.png", sizes: "16x16", type: "image/png" },
+    ],
+    shortcut: ["/multi-llm-logo.png"],
+    apple: [
+      { url: "/multi-llm-logo.png", sizes: "180x180", type: "image/png" },
+    ],
+  },
+
   openGraph: {
     title: "Multi-LLM Platform",
     description:
