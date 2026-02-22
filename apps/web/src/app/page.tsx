@@ -27,15 +27,6 @@ type ChatListItem = {
   updated_at: string;
 };
 
-type ChatDetail = {
-  id: string;
-  title: string;
-  model: string;
-  messages: Msg[];
-  created_at?: string;
-  updated_at?: string;
-};
-
 const MODEL_OPTIONS = [
   "openai:gpt-5-nano",
   "openai:gpt-5-mini",
@@ -257,6 +248,9 @@ export default function Page() {
   const [cancelText, setCancelText] = useState("Cancel");
 
   const [isAuthed, setIsAuthed] = useState(false);
+
+  const [isDraggingFiles, setIsDraggingFiles] = useState(false);
+  const dragDepthRef = useRef(0);
 
   useEffect(() => {
     return onAuthStateChanged(auth, (u) => {
@@ -772,13 +766,103 @@ export default function Page() {
     return dir === "rtl" ? "plaintext" : "normal";
   }
 
+  function addFiles(files: File[]) {
+    if (!files.length) return;
+
+    const dedupKey = (f: File) => `${f.name}-${f.size}-${f.lastModified}`;
+
+    setAttachedFiles((prev) => {
+      const prevKeys = new Set(prev.map(dedupKey));
+      const next = [...prev];
+
+      for (const f of files) {
+        if (!prevKeys.has(dedupKey(f))) {
+          next.push(f);
+          prevKeys.add(dedupKey(f));
+        }
+      }
+      return next;
+    });
+  }
+
+  useEffect(() => {
+    const hasFiles = (dt: DataTransfer | null) => {
+      if (!dt) return false;
+      return Array.from(dt.types || []).includes("Files");
+    };
+
+    const onDragEnter = (e: DragEvent) => {
+      if (!hasFiles(e.dataTransfer) || isStreaming) return;
+      dragDepthRef.current += 1;
+      setIsDraggingFiles(true);
+    };
+
+    const onDragOver = (e: DragEvent) => {
+      if (!hasFiles(e.dataTransfer) || isStreaming) return;
+      e.preventDefault(); // allow drop
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
+    };
+
+    const onDragLeave = (e: DragEvent) => {
+      if (!hasFiles(e.dataTransfer) || isStreaming) return;
+      dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+      if (dragDepthRef.current === 0) setIsDraggingFiles(false);
+    };
+
+    const onDrop = (e: DragEvent) => {
+      if (isStreaming) return;
+      if (!hasFiles(e.dataTransfer)) return;
+
+      e.preventDefault();
+      dragDepthRef.current = 0;
+      setIsDraggingFiles(false);
+
+      const files = Array.from(e.dataTransfer?.files || []);
+      addFiles(files);
+    };
+
+    // Prevent browser from navigating away when dropping a file
+    const preventWindowDrop = (e: DragEvent) => {
+      if (hasFiles(e.dataTransfer)) e.preventDefault();
+    };
+
+    window.addEventListener("dragenter", onDragEnter);
+    window.addEventListener("dragover", onDragOver);
+    window.addEventListener("dragleave", onDragLeave);
+    window.addEventListener("drop", onDrop);
+
+    // extra safety
+    window.addEventListener("dragover", preventWindowDrop);
+    window.addEventListener("drop", preventWindowDrop);
+
+    return () => {
+      window.removeEventListener("dragenter", onDragEnter);
+      window.removeEventListener("dragover", onDragOver);
+      window.removeEventListener("dragleave", onDragLeave);
+      window.removeEventListener("drop", onDrop);
+
+      window.removeEventListener("dragover", preventWindowDrop);
+      window.removeEventListener("drop", preventWindowDrop);
+    };
+  }, [isStreaming]);
+
   return (
-    // <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
     <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
       <LogoSplash
         show={showSplash}
         text={authReady ? "Preparing your workspace…" : "Initializing…"}
       />
+
+      {isDraggingFiles ? (
+        <div
+          className="fixed inset-0 z-999 bg-black/50 backdrop-blur-sm flex items-center justify-center pointer-events-none"
+          aria-hidden="true"
+        >
+          <div className="rounded-2xl border border-white/15 bg-black/40 px-6 py-4 text-sm text-gray-100 shadow-xl">
+            Drop files to attach
+          </div>
+        </div>
+      ) : null}
 
       {isSmall ? (
         <button
@@ -1364,11 +1448,26 @@ export default function Page() {
                               <input
                                 type="file"
                                 multiple
+                                accept={[
+                                  "application/pdf",
+                                  "text/plain",
+                                  "text/markdown",
+                                  "application/json",
+                                  "text/csv",
+                                  "application/xml",
+                                  "text/xml",
+                                  // Office (optional)
+                                  "application/msword",
+                                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                  "application/vnd.ms-excel",
+                                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                  // images (only if you really want them here)
+                                  "image/*",
+                                ].join(",")}
                                 className="hidden"
                                 onChange={(e) => {
                                   const files = Array.from(e.target.files || []);
-                                  if (!files.length) return;
-                                  setAttachedFiles((prev) => [...prev, ...files]);
+                                  addFiles(files);
                                   e.currentTarget.value = "";
                                 }}
                                 disabled={isStreaming}
