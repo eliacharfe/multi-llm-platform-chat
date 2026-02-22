@@ -198,15 +198,18 @@ http://localhost:8000
 
 ---
 
-# 🔐 Environment Variables
+## 🔐 Environment Variables
 
-## Frontend — `apps/web/.env.local`
+### Frontend — `apps/web/.env.local`
+
+> `NEXT_PUBLIC_*` variables are exposed to the browser by Next.js.  
+> The Firebase Web API key is **not a secret**, but it **must be restricted** in Google Cloud (HTTP referrers + API restrictions).
 
 ```env
-NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyBDTlkAVin5jwZYkgjrlhL2BBfraFr-XCg
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=multi-llm-platform-chat.firebaseapp.com
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=multi-llm-platform-chat
-NEXT_PUBLIC_FIREBASE_APP_ID=1:386018853430:web:c7ed96600a26c7ffaf8e97
+NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_web_api_key
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+NEXT_PUBLIC_FIREBASE_APP_ID=your_firebase_app_id
 ```
 
 ## Backend — `apps/api/.env`
