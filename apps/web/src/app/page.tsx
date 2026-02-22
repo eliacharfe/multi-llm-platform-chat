@@ -1462,7 +1462,7 @@ export default function Page() {
                                   "application/vnd.ms-excel",
                                   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                                   // images (only if you really want them here)
-                                  "image/*",
+                                  // "image/*",
                                 ].join(",")}
                                 className="hidden"
                                 onChange={(e) => {
