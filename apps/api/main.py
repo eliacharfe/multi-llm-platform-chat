@@ -47,7 +47,6 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:3001",
         "http://127.0.0.1:3001",
-        # add your production domain too if needed:
         "https://multi-llm-platform-premium.vercel.app",
     ],
     allow_credentials=True,
