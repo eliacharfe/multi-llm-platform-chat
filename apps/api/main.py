@@ -40,20 +40,20 @@ from clients import (
 
 app = FastAPI()
 
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"^https:\/\/.*\.vercel\.app$",
     allow_origins=[
         "http://localhost:3000",
+        "http://127.0.0.1:3000",
         "http://localhost:3001",
+        "http://127.0.0.1:3001",
+        # add your production domain too if needed:
+        "https://multi-llm-platform-premium.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
 
 _sa = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
 if not _sa:
@@ -858,7 +858,7 @@ async def split_uploads(files: list[UploadFile]) -> tuple[str, list[dict], list[
             continue
 
         if ext in ALLOWED_TEXT_EXTS:
-            content = await read_upload_bytes_to_text(name, data)
+            content =  read_upload_bytes_to_text(name, data)
             if content:
                 chunks.append(f"### File: {name}\n{content}")
             continue

@@ -2,7 +2,6 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import "@/lib/prism";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
@@ -60,7 +59,6 @@ export default function Page() {
 
   // Confirm dialog
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [confirmLoading, setConfirmLoading] = useState(false);
   const confirmActionRef = useRef<null | (() => Promise<void> | void)>(null);
   const [confirmTitle, setConfirmTitle] = useState("Confirm");
   const [confirmMessage, setConfirmMessage] = useState("");
@@ -124,7 +122,6 @@ export default function Page() {
   }
 
   function closeConfirm() {
-    if (confirmLoading) return;
     setConfirmOpen(false);
     confirmActionRef.current = null;
   }
@@ -774,7 +771,6 @@ export default function Page() {
         variant={confirmVariant}
         confirmText={confirmText}
         cancelText={cancelText}
-        loading={confirmLoading}
         onClose={closeConfirm}
         onConfirm={async () => {
           const fn = confirmActionRef.current;
