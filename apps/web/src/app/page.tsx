@@ -17,126 +17,13 @@ import MessageList from "@/components/chat/MessageList";
 import type { Msg } from "@/components/chat/MessageList";
 
 import Composer from "@/components/chat/Composer";
-import type { SelectOpt } from "@/components/chat/Composer";
 
-const MODEL_OPTIONS = [
-  "openai:gpt-5-nano",
-  "openai:gpt-5-mini",
-  "openai:gpt-5",
-  "openrouter:deepseek/deepseek-chat",
-  "openrouter:x-ai/grok-4.1-fast",
-  "openrouter:openai/gpt-4o-mini",
-  "openrouter:mistralai/mistral-large-2512",
-  "groq:llama-3.1-8b-instant",
-  "groq:llama-3.3-70b-versatile",
-  "anthropic:claude-sonnet-4-6",
-  "anthropic:claude-opus-4-6",
-  "anthropic:claude-haiku-4-5",
-  "gemini:models/gemini-2.5-flash-lite",
-  "gemini:models/gemini-2.5-flash",
-] as const;
-
-const DEFAULT_TEMPERATURE = 0.7;
-
-const TEMPERATURE_BY_MODEL: Record<string, number> = {
-  "openrouter:deepseek/deepseek-chat": 0.7,
-  "openrouter:x-ai/grok-4.1-fast": 0.7,
-  "openrouter:openai/gpt-4o-mini": 0.7,
-  "openrouter:mistralai/mistral-large-2512": 0.6,
-  "groq:llama-3.1-8b-instant": 0.7,
-  "groq:llama-3.2-3b": 0.6,
-  "groq:llama-3.3-70b-versatile": 0.7,
-  "anthropic:claude-sonnet-4-6": 0.6,
-  "anthropic:claude-opus-4-6": 0.6,
-  "anthropic:claude-haiku-4-5": 0.7,
-  "gemini:models/gemini-2.5-flash-lite": 0.7,
-  "gemini:models/gemini-2.5-flash": 0.7,
-};
-
-const PROVIDER_TITLES: Record<string, string> = {
-  openai: "OpenAI",
-  openrouter: "OpenRouter",
-  groq: "Groq",
-  anthropic: "Anthropic",
-  gemini: "Gemini",
-  nebius: "Nebius",
-};
-
-const PROVIDER_ICONS: Record<string, string> = {
-  openai: "🟢",
-  openrouter: "⚡",
-  groq: "🟠",
-  anthropic: "🟣",
-  gemini: "🔵",
-  nebius: "🟤",
-};
-
-
-function getTemperature(providerModel: string) {
-  const t = TEMPERATURE_BY_MODEL[providerModel];
-  return typeof t === "number" ? t : DEFAULT_TEMPERATURE;
-}
-
-function prettifyModelName(modelName: string) {
-  const raw = (modelName || "").trim().split("/").pop() || modelName;
-  const spaced = raw.replace(/[-_]/g, " ").replace(/\s+/g, " ").trim();
-
-  return spaced
-    .split(" ")
-    .map((w) => {
-      const lw = w.toLowerCase();
-      if (lw === "gpt") return "GPT";
-      if (lw === "llama") return "Llama";
-      if (lw === "claude") return "Claude";
-      if (lw === "gemini") return "Gemini";
-      return /^[0-9.]+$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1);
-    })
-    .join(" ");
-}
-
-function thinkingText(providerModel: string) {
-  const [, modelName = ""] = providerModel.split(":", 2);
-  const pretty = prettifyModelName(modelName);
-  return `${pretty} is thinking about it...`;
-}
-
-function buildSectionedChoices(models: readonly string[]): SelectOpt[] {
-  const grouped = new Map<string, string[]>();
-
-  for (const pm of models) {
-    const [provider] = pm.split(":", 1);
-    if (!provider) continue;
-    grouped.set(provider, [...(grouped.get(provider) || []), pm]);
-  }
-
-  const order = ["openai", "openrouter", "groq", "anthropic", "gemini", "nebius"];
-  const out: SelectOpt[] = [];
-
-  for (const provider of order) {
-    const items = grouped.get(provider);
-    if (!items?.length) continue;
-
-    const icon = PROVIDER_ICONS[provider] ?? "•";
-    const title = PROVIDER_TITLES[provider] ?? provider;
-
-    out.push({
-      value: `__header__:${provider}`,
-      label: `--- ${icon} ${title} ${icon} ---`,
-      disabled: true,
-    });
-
-    for (const pm of items) {
-      const [, modelName = ""] = pm.split(":", 2);
-      out.push({
-        value: pm,
-        label: `${icon}  ${prettifyModelName(modelName)}`
-      });
-    }
-  }
-
-  return out;
-}
-
+import {
+  MODEL_OPTIONS,
+  getTemperature,
+  thinkingText,
+  buildSectionedChoices,
+} from "@/lib/models";
 
 
 export default function Page() {
@@ -144,30 +31,9 @@ export default function Page() {
 
   const [showSplash, setShowSplash] = useState(true);
   const [authReady, setAuthReady] = useState(false);
-
-  useEffect(() => {
-    if (!authReady) return;
-
-    const minMs = 3000;
-    const t = window.setTimeout(() => setShowSplash(false), minMs);
-    return () => window.clearTimeout(t);
-  }, [authReady]);
-
-  useEffect(() => {
-    return onAuthStateChanged(auth, () => {
-      setAuthReady(true);
-    });
-  }, []);
-
+  const [isAuthed, setIsAuthed] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [userLabel, setUserLabel] = useState("Sign in");
-
-  useEffect(() => {
-    return onAuthStateChanged(auth, (u) => {
-      if (!u) setUserLabel("Sign in");
-      else setUserLabel(u.displayName || u.email || "Account");
-    });
-  }, []);
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -190,29 +56,28 @@ export default function Page() {
 
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
+  const isSmallRef = useRef(false);
+
   // Confirm dialog
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const confirmActionRef = useRef<null | (() => Promise<void> | void)>(null);
-
   const [confirmTitle, setConfirmTitle] = useState("Confirm");
   const [confirmMessage, setConfirmMessage] = useState("");
   const [confirmVariant, setConfirmVariant] = useState<"default" | "danger">("default");
   const [confirmText, setConfirmText] = useState("OK");
   const [cancelText, setCancelText] = useState("Cancel");
 
-  const [isAuthed, setIsAuthed] = useState(false);
-
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const dragDepthRef = useRef(0);
 
   useEffect(() => {
-    return onAuthStateChanged(auth, (u) => {
-      setIsAuthed(!!u);
-      if (!u) setUserLabel("Sign in");
-      else setUserLabel(u.displayName || u.email || "Account");
-    });
-  }, []);
+    if (!authReady) return;
+
+    const minMs = 3000;
+    const t = window.setTimeout(() => setShowSplash(false), minMs);
+    return () => window.clearTimeout(t);
+  }, [authReady]);
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (u) => {
@@ -269,13 +134,6 @@ export default function Page() {
     () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
     [input, attachedFiles.length, isStreaming]
   );
-  // const canSend = useMemo(
-  //   () =>
-  //     auth.currentUser &&
-  //     (input.trim().length > 0 || attachedFiles.length > 0) &&
-  //     !isStreaming,
-  //   [input, attachedFiles.length, isStreaming, authReady]
-  // );
 
   const filteredChats = useMemo(() => {
     const q = chatSearch.trim().toLowerCase();
@@ -283,19 +141,7 @@ export default function Page() {
     return chats.filter((c) => (c.title || "").toLowerCase().includes(q));
   }, [chats, chatSearch]);
 
-  useEffect(() => {
-    const mq = window.matchMedia("(max-width: 900px)");
-    const apply = () => setIsSidebarCollapsed(mq.matches);
 
-    apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
-
-    return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
-    };
-  }, []);
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const token = await auth.currentUser?.getIdToken();
@@ -401,17 +247,6 @@ export default function Page() {
     await refreshChats();
     return created.chat_id;
   }
-
-  useEffect(() => {
-    if (!authReady) return;
-    if (!auth.currentUser) {
-      setChats([]);
-      setActiveChatId(null);
-      setMessages([]);
-      return;
-    }
-    refreshChats().catch(() => { });
-  }, [authReady]);
 
 
   async function send() {
@@ -669,7 +504,7 @@ export default function Page() {
     });
   }
 
-  const isSmallRef = useRef(false);
+
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
@@ -705,20 +540,6 @@ export default function Page() {
     };
   }, []);
 
-  function detectDir(text: string): "rtl" | "ltr" {
-    const s = (text || "").trim();
-    if (!s) return "ltr";
-
-    const rtlChars = s.match(/[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g)?.length ?? 0;
-    const ltrChars = s.match(/[A-Za-z]/g)?.length ?? 0;
-    if (rtlChars > ltrChars) return "rtl";
-    return "ltr";
-  }
-
-  // optional: for better punctuation/number mixing inside RTL text
-  function unicodeBidiFor(dir: "rtl" | "ltr") {
-    return dir === "rtl" ? "plaintext" : "normal";
-  }
 
   function addFiles(files: File[]) {
     if (!files.length) return;
@@ -753,7 +574,7 @@ export default function Page() {
 
     const onDragOver = (e: DragEvent) => {
       if (!hasFiles(e.dataTransfer) || isStreaming) return;
-      e.preventDefault(); // allow drop
+      e.preventDefault();
       if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
     };
 
@@ -798,6 +619,8 @@ export default function Page() {
       window.removeEventListener("drop", preventWindowDrop);
     };
   }, [isStreaming]);
+
+
 
   return (
     <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
