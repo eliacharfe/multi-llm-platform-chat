@@ -437,6 +437,13 @@ export default function Page() {
   async function ensureChatId(): Promise<string> {
     if (activeChatId) return activeChatId;
 
+    console.log("[ensureChatId] creating chat", {
+      model,
+      input: input.trim(),
+      files: attachedFiles.length,
+      stack: new Error().stack,
+    });
+
     const created = await api<{ chat_id: string }>("/v1/chats", {
       method: "POST",
       body: JSON.stringify({ model }),
@@ -1297,6 +1304,10 @@ export default function Page() {
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault();
+
+                              const text = (e.currentTarget.value || "").trim();
+                              if (!text && attachedFiles.length === 0) return; // hard guard
+
                               send();
                             }
                           }}
