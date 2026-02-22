@@ -473,7 +473,6 @@ export default function Page() {
     }
   }
 
-
   function stop() {
     abortRef.current?.abort();
     abortRef.current = null;
@@ -500,8 +499,6 @@ export default function Page() {
       el2.scrollTop = el2.scrollHeight;
     });
   }
-
-
 
   useEffect(() => {
     const mq = window.matchMedia("(max-width: 900px)");
@@ -620,7 +617,8 @@ export default function Page() {
 
 
   return (
-    <main className="h-screen w-screen bg-[#252525] text-gray-200 overflow-hidden">
+    // <main className="h-dvh w-screen bg-[#252525] text-gray-200 overflow-hidden">
+    <main className="fixed inset-0 h-dvh w-screen bg-[#252525] text-gray-200 overflow-hidden flex flex-col">
       <LogoSplash
         show={showSplash}
         text={authReady ? "Preparing your workspace…" : "Initializing…"}
