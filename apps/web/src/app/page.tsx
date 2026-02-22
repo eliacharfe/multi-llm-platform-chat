@@ -1,31 +1,23 @@
-// web/src/app/page.tsx
+// apps/web/src/app/page.tsx
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import rehypePrism from "rehype-prism-plus";
-import * as Prism from "prismjs";
 import "@/lib/prism";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 
-import CopyButton from "@/components/ui/CopyButton";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
-import ModelDropdown from "@/components/ui/ModelDropdown";
 import AuthDialog from "@/components/ui/AuthDialog";
-import Tooltip from "@/components/ui/Tooltip";
-import IconGhostButton from "@/components/ui/IconGhostButton";
 import LogoSplash from "@/components/ui/LogoSplash";
 
-type Msg = { role: "user" | "assistant" | "system"; content: string };
+import Sidebar from "@/components/chat/Sidebar";
+import type { ChatListItem } from "@/components/chat/Sidebar";
 
-type ChatListItem = {
-  id: string;
-  title: string;
-  model: string;
-  updated_at: string;
-};
+import MessageList from "@/components/chat/MessageList";
+import type { Msg } from "@/components/chat/MessageList";
+
+import Composer from "@/components/chat/Composer";
+import type { SelectOpt } from "@/components/chat/Composer";
 
 const MODEL_OPTIONS = [
   "openai:gpt-5-nano",
@@ -79,7 +71,6 @@ const PROVIDER_ICONS: Record<string, string> = {
   nebius: "🟤",
 };
 
-type SelectOpt = { value: string; label: string; disabled?: boolean };
 
 function getTemperature(providerModel: string) {
   const t = TEMPERATURE_BY_MODEL[providerModel];
@@ -146,43 +137,6 @@ function buildSectionedChoices(models: readonly string[]): SelectOpt[] {
   return out;
 }
 
-function Spinner() {
-  return (
-    <span
-      className="inline-block h-4 w-4 rounded-full border-2 border-white/20 border-t-white/70 animate-spin"
-      aria-label="Loading"
-    />
-  );
-}
-
-function childrenToText(children: React.ReactNode): string {
-  if (typeof children === "string") return children;
-  if (Array.isArray(children)) return children.map(childrenToText).join("");
-  return (children as any)?.toString?.() ?? "";
-}
-
-function formatChatTime(iso: string) {
-  try {
-    const d = new Date(iso);
-    const now = new Date();
-    const sameDay =
-      d.getFullYear() === now.getFullYear() &&
-      d.getMonth() === now.getMonth() &&
-      d.getDate() === now.getDate();
-
-    if (sameDay) {
-      const hh = String(d.getHours()).padStart(2, "0");
-      const mm = String(d.getMinutes()).padStart(2, "0");
-      return `${hh}:${mm}`;
-    }
-
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(
-      d.getDate()
-    ).padStart(2, "0")}`;
-  } catch {
-    return "";
-  }
-}
 
 
 export default function Page() {
@@ -821,7 +775,6 @@ export default function Page() {
       addFiles(files);
     };
 
-    // Prevent browser from navigating away when dropping a file
     const preventWindowDrop = (e: DragEvent) => {
       if (hasFiles(e.dataTransfer)) e.preventDefault();
     };
@@ -901,205 +854,43 @@ export default function Page() {
           />
         ) : null}
         {/* LEFT SIDEBAR */}
-        <aside
-          className={[
-            "h-full min-h-0 border-r border-white/10 bg-[#2b2b2b] flex flex-col overflow-hidden",
-            "transition-all duration-200 ease-out",
+        <Sidebar
+          isSmall={isSmall}
+          isSidebarCollapsed={isSidebarCollapsed}
+          setIsSidebarCollapsed={setIsSidebarCollapsed}
+          isStreaming={isStreaming}
+          chats={chats}
+          filteredChats={filteredChats}
+          activeChatId={activeChatId}
+          isSidebarLoading={isSidebarLoading}
+          chatSearch={chatSearch}
+          setChatSearch={setChatSearch}
+          onNewChat={newDraftChat}
+          onOpenChat={openChat}
+          onRequestDeleteChat={(id) => {
+            openConfirm({
+              title: "Delete chat?",
+              message: "This will permanently delete the chat and its messages.",
+              variant: "danger",
+              confirmText: "Delete",
+              cancelText: "Cancel",
+              onConfirm: async () => {
+                await api(`/v1/chats/${id}`, { method: "DELETE" });
 
-            isSmall
-              ? [
-                "fixed left-0 top-0 z-50",
-                "w-[92vw] max-w-[420px]",
-                "transform transition-transform duration-200 ease-out will-change-transform",
-                isSidebarCollapsed ? "-translate-x-full" : "translate-x-0",
-              ].join(" ")
-              :
-              (isSidebarCollapsed
-                ? "w-[56px]"
-                : "w-[250px] sm:w-[270px] lg:w-[280px] xl:w-[290px]"),
-          ].join(" ")}
-        >
+                if (activeChatId === id) {
+                  setActiveChatId(null);
+                  setMessages([]);
+                }
 
-          {/* Toggle button */}
-          <div className="relative pt-20 px-2">
-
-            <div
-              className={[
-                "absolute top-2 z-10",
-                isSidebarCollapsed
-                  ? "left-1/2 -translate-x-1/2"
-                  : "right-2",
-              ].join(" ")}
-            >
-              <IconGhostButton
-                label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                withTooltip={false}
-                size="md"
-                onClick={() => setIsSidebarCollapsed((v) => !v)}
-                disabled={isStreaming}
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  className={`h-5 w-5 transition-transform duration-200 ${isSidebarCollapsed ? "rotate-180" : ""
-                    }`}
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden="true"
-                >
-                  <rect x="4" y="5" width="16" height="14" rx="2" />
-                  <path d="M12 5v14" />
-                </svg>
-              </IconGhostButton>
-            </div>
-          </div>
-
-          {/* Sidebar content (full height column) */}
-          {!isSidebarCollapsed && (
-            <div className="flex-1 min-h-0 px-4 pb-4 pt-0 flex flex-col">
-              {/* Top actions */}
-              <div className="flex flex-col gap-3 shrink-0">
-                <button
-                  className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left"
-                  onClick={newDraftChat}
-                >
-                  + New Chat
-                </button>
-
-                <div className="rounded-lg border border-white/10 bg-black/10 px-3 py-2 flex items-center gap-2">
-                  <input
-                    className="w-full bg-transparent outline-none text-sm placeholder:text-gray-400"
-                    placeholder="Search chats..."
-                    value={chatSearch}
-                    onChange={(e) => setChatSearch(e.target.value)}
-                  />
-                  <button
-                    className="opacity-70 hover:opacity-100 transition cursor-pointer"
-                    title="Search"
-                    type="button"
-                  >
-                    <svg
-                      viewBox="0 0 24 24"
-                      className="h-4 w-4 text-gray-300"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      aria-hidden="true"
-                    >
-                      <circle cx="11" cy="11" r="8" />
-                      <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Chats list (SCROLLS) */}
-              <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 mt-4">
-                {isSidebarLoading && chats.length === 0 ? (
-                  <div className="text-xs text-gray-400 px-2 py-2">Loading chats…</div>
-                ) : filteredChats.length === 0 ? (
-                  <div className="text-xs text-gray-400 px-2 py-2">No saved chats yet.</div>
-                ) : (
-                  <div className="flex flex-col gap-1">
-                    {filteredChats.map((c) => {
-                      const active = c.id === activeChatId;
-
-                      return (
-                        <div
-                          key={c.id}
-                          className={[
-                            "group w-full text-left rounded-lg px-3 py-2 border transition relative",
-                            active
-                              ? "bg-white/10 border-white/15"
-                              : "bg-black/10 border-white/10 hover:bg-white/10 hover:border-white/15",
-                          ].join(" ")}
-                        >
-                          <button onClick={() => openChat(c.id)} className="w-full text-left">
-                            <div className="flex items-center justify-between gap-2">
-                              <div className="text-sm text-gray-100 truncate">
-                                {c.title || "New chat"}
-                              </div>
-                              <div className="text-[11px] text-gray-400 shrink-0">
-                                {formatChatTime(c.updated_at)}
-                              </div>
-                            </div>
-                            <div className="mt-1 text-[11px] text-gray-400 truncate">
-                              {c.model}
-                            </div>
-                          </button>
-
-                          <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-
-                                const id = c.id;
-
-                                openConfirm({
-                                  title: "Delete chat?",
-                                  message: "This will permanently delete the chat and its messages.",
-                                  variant: "danger",
-                                  confirmText: "Delete",
-                                  cancelText: "Cancel",
-                                  onConfirm: async () => {
-                                    await api(`/v1/chats/${id}`, { method: "DELETE" });
-
-                                    if (activeChatId === id) {
-                                      setActiveChatId(null);
-                                      setMessages([]);
-                                    }
-
-                                    await refreshChats();
-                                    closeConfirm();
-                                  },
-                                });
-                              }}
-                              className="relative group/delete text-gray-400 hover:text-red-400"
-                              aria-label="Delete chat"
-                            >
-                              🗑️
-
-                              {/* Tooltip (bottom, compact) */}
-                              <span
-                                className={[
-                                  "pointer-events-none absolute right-0 translate-x-0 top-full mb-2 z-9999",
-                                  "opacity-0 translate-y-0.5 group-hover/delete:opacity-100 group-hover/delete:translate-y-0",
-                                  "transition duration-150",
-                                ].join(" ")}
-                              >
-                                <span className="absolute right-2 -top-[3px] h-1.5 w-1.5 rotate-45 bg-white/95 rounded-[2px] shadow-sm z-9999" />
-                                <span className="block whitespace-nowrap rounded-md bg-white/95 px-2 py-1 text-[11px] leading-none text-black shadow-lg z-9999">
-                                  Delete Chat
-                                </span>
-                              </span>
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-
-              {/* Footer (ALWAYS VISIBLE) */}
-              <div className="shrink-0 pt-4">
-                <button
-                  type="button"
-                  onClick={() => setAuthOpen(true)}
-                  className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center justify-between gap-2"
-                >
-                  <span className="truncate">{userLabel}</span>
-                  <span className="text-xs text-gray-400">{isAuthed ? "🟢" : "○"}</span>
-                </button>
-              </div>
-            </div>
-          )}
-        </aside>
+                await refreshChats();
+                closeConfirm();
+              },
+            });
+          }}
+          userLabel={userLabel}
+          isAuthed={isAuthed}
+          onOpenAuth={() => setAuthOpen(true)}
+        />
 
 
         {/* MAIN CHAT AREA */}
@@ -1108,427 +899,44 @@ export default function Page() {
             {/* chat scroller */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-3 sm:px-6 pt-6 sm:pt-8 pb-[calc(220px+env(safe-area-inset-bottom))]"
+              className="flex-1 overflow-y-auto px-3 sm:px-6 pt-6 sm:pt-8 pb-[calc(env(safe-area-inset-bottom)-15px)]"
               onScroll={() => {
                 autoScrollEnabledRef.current = isNearBottom(140);
               }}
             >
               <div className="mx-auto max-w-3xl min-w-0">
-                {messages.length === 0 ? (
-                  <div className="flex items-center justify-center py-20">
-                    <div className="w-full max-w-3xl px-2">
-                      <div className="relative text-center">
-                        {/* Glow background */}
-                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-                          <div className="h-40 w-md bg-linear-to-r from-blue-500/20 via-indigo-500/20 to-blue-500/20 blur-3xl rounded-full opacity-60" />
-                        </div>
-
-                        <div className="relative">
-                          <div className="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight lg:pt-20 sm:pt-1 md:pt-10">
-                            Welcome back!
-                          </div>
-
-                          <div className="mt-2 text-base sm:text-lg text-gray-400">
-                            Choose a model, and ask anything…
-                          </div>
-
-                          {/* suggestions */}
-                          <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {[
-                              {
-                                t: "Generate a useful Python script",
-                                s: "Convert it to JavaScript, then explain the differences",
-                              },
-                              {
-                                t: "Evaluate two AI models of your choice",
-                                s: "Analyze speed, cost, and output quality",
-                              },
-                              {
-                                t: "Explain a well-known physics problem",
-                                s: "Break down its core principles clearly",
-                              },
-                              {
-                                t: "Next.js vs Angular",
-                                s: "When to choose each in real projects",
-                              },
-                            ]
-                              // .slice(0, isExtraSmall ? 3 : 4)
-                              .map((x) => (
-                                <button
-                                  key={x.t}
-                                  type="button"
-                                  onClick={() => setInput(`${x.t}\n${x.s}`)}
-                                  className={[
-                                    "group cursor-pointer text-left rounded-2xl border border-white/10",
-                                    "bg-white/3 hover:bg-white/6 transition",
-                                    "px-5 py-4",
-                                    "transform-gpu will-change-transform",
-                                    "hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.99]",
-                                    "duration-200 ease-out",
-                                    "hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]",
-                                    "hover:ring-1 hover:ring-white/15",
-                                  ].join(" ")}
-                                >
-                                  <div className="text-sm font-medium text-gray-100">{x.t}</div>
-                                  <div className="mt-1 text-sm text-gray-400">{x.s}</div>
-                                </button>
-                              ))}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-5">
-                    {messages
-                      .filter((m) => m.role !== "system")
-                      .map((m, idx) => {
-                        const isUser = m.role === "user";
-                        const isAssistant = m.role === "assistant";
-
-                        const dir = detectDir(m.content);
-                        const isRTL = dir === "rtl";
-
-                        return (
-                          <div
-                            key={idx}
-                            className={`flex ${isUser ? "justify-end" : "justify-start"}`}
-                          >
-                            {isUser ? (
-                              <div className="max-w-[75%]" dir={dir} style={{ unicodeBidi: isRTL ? "plaintext" : "normal" }}>
-                                {/* Bubble */}
-                                <div
-                                  className={[
-                                    "rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm",
-                                    isRTL ? "text-right" : "text-left",
-                                  ].join(" ")}
-                                >
-                                  <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
-                                    {m.content}
-                                  </div>
-                                </div>
-
-                                <div className={["mt-1 flex", isRTL ? "justify-start" : "justify-end"].join(" ")}>
-                                  <CopyButton text={m.content} />
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="w-full max-w-3xl">
-                                <div
-                                  dir={dir}
-                                  style={{ unicodeBidi: isRTL ? "plaintext" : "normal" }}
-                                  className={[
-                                    "text-sm leading-relaxed text-gray-100 min-w-0",
-                                    "wrap-anywhere",
-                                    isRTL ? "text-right" : "text-left",
-                                    "[&_p]:my-3 [&_ul]:my-3 [&_ol]:my-3 [&_li]:my-1",
-                                    "[&_h1]:mt-6 [&_h1]:mb-3 [&_h2]:mt-5 [&_h2]:mb-2 [&_h3]:mt-4 [&_h3]:mb-2",
-                                    "[&_pre]:my-4 [&_pre]:max-w-full [&_pre]:overflow-x-auto",
-                                    "[&_code]:max-w-full",
-                                    "[&_table]:block [&_table]:max-w-full [&_table]:overflow-x-auto",
-                                    "[&_img]:max-w-full",
-                                  ].join(" ")}
-                                >
-                                  {isStreaming &&
-                                    idx === messages.length - 1 &&
-                                    (m.content?.length ?? 0) === 0 && (
-                                      <div className="flex items-center gap-3 text-gray-400">
-                                        <Spinner />
-                                        <span>{thinkingText(model)}</span>
-                                      </div>
-                                    )}
-
-                                  {m.content?.length ? (
-                                    <ReactMarkdown
-                                      remarkPlugins={[remarkGfm]}
-                                      components={{
-                                        code({ className, children, ...props }) {
-                                          const lang =
-                                            (className || "").match(/language-(\w+)/)?.[1] || "";
-                                          const isBlock = /language-\w+/.test(className || "");
-
-                                          if (isBlock) {
-                                            const raw = childrenToText(children).replace(/\n$/, "");
-                                            const grammar = (Prism.languages as any)[lang];
-                                            const highlighted = grammar
-                                              ? Prism.highlight(raw, grammar, lang)
-                                              : raw;
-
-                                            return (
-                                              // <div className="relative my-3" dir="ltr">
-                                              <div className="relative my-3 max-w-full min-w-0" dir="ltr">
-                                                <div className="absolute right-2 top-2 flex items-center gap-2">
-                                                  {lang && (
-                                                    <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
-                                                      {lang}
-                                                    </span>
-                                                  )}
-                                                  <CopyButton
-                                                    text={raw}
-                                                    className="bg-black/30"
-                                                    title="Copy code"
-                                                  />
-                                                </div>
-
-                                                <pre
-                                                  dir="ltr"
-                                                  className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto max-w-full text-sm"
-                                                >
-                                                  <code
-                                                    className={className}
-                                                    dangerouslySetInnerHTML={{ __html: highlighted }}
-                                                  />
-                                                </pre>
-                                              </div>
-                                            );
-                                          }
-
-                                          // inline code should also stay LTR
-                                          return (
-                                            <code
-                                              dir="ltr"
-                                              className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
-                                              {...props}
-                                            >
-                                              {children}
-                                            </code>
-                                          );
-                                        },
-                                      }}
-                                    >
-                                      {m.content}
-                                    </ReactMarkdown>
-                                  ) : null}
-                                </div>
-
-                                {
-                                  isAssistant && (m.content?.length ?? 0) > 0 ? (
-                                    <div className={["mt-2 flex", isRTL ? "justify-end" : "justify-start"].join(" ")}>
-                                      <CopyButton text={m.content} />
-                                    </div>
-                                  ) : null
-                                }
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
-                )}
+                <MessageList
+                  messages={messages}
+                  isStreaming={isStreaming}
+                  model={model}
+                  thinkingLabel={thinkingText(model)}
+                  onSuggestion={(text) => setInput(text)}
+                />
               </div>
             </div>
 
             {/* COMPOSER (bottom bar) — FIXED OUTSIDE SCROLL */}
-            <div
-              className={[
-                "fixed bottom-0 bg-[#252525] transition-opacity",
-                "z-30",
-                isSmall && !isSidebarCollapsed ? "opacity-0 pointer-events-none" : "opacity-100",
-              ].join(" ")}
-              style={{
-                left: isSmall ? 0 : isSidebarCollapsed ? 56 : 290,
-                right: 0,
+            <Composer
+              input={input}
+              setInput={setInput}
+              attachedFiles={attachedFiles}
+              onAddFiles={addFiles}
+              onClearFiles={() => setAttachedFiles([])}
+              model={model}
+              modelChoices={modelChoices}
+              onChangeModel={(v) => {
+                if (v.startsWith("__header__:")) return;
+                setModel(v);
               }}
-            >
-              <div className="px-6 pt-4 pb-[calc(12px+env(safe-area-inset-bottom))]">
-                <div className="mx-auto max-w-3xl">
-                  <div className="relative p-[3px] rounded-2xl focus-within:bg-linear-to-r focus-within:from-blue-500 focus-within:via-indigo-500 focus-within:to-blue-500 transition-all">
-                    <div className="rounded-2xl bg-[#2f2f2f]">
-                      <div className="px-4 pt-4">
-                        {attachedFiles.length > 0 ? (
-                          <div className="px-4 pt-3 flex flex-wrap gap-2">
-                            {attachedFiles.map((f, idx) => (
-                              <div
-                                key={`${f.name}-${idx}`}
-                                className="flex items-center gap-2 rounded-full border border-white/10 bg-black/20 px-3 py-1 text-xs text-gray-200"
-                                title={f.name}
-                              >
-                                <span className="max-w-[220px] truncate">{f.name}</span>
-                                <input
-                                  type="file"
-                                  multiple
-                                  accept={[
-                                    "image/*",
-                                    ".txt", ".md", ".json", ".csv", ".log",
-                                    ".yaml", ".yml",
-                                    ".dart", ".py", ".js", ".ts", ".tsx",
-                                    ".html", ".css", ".xml",
-                                    ".swift",
-                                    ".pdf",
-                                  ].join(",")}
-                                  className="hidden"
-                                  onChange={(e) => {
-                                    const files = Array.from(e.target.files || []);
-                                    if (!files.length) return;
-                                    setAttachedFiles((prev) => [...prev, ...files]);
-                                    e.currentTarget.value = "";
-                                  }}
-                                  disabled={isStreaming}
-                                />
-                              </div>
-                            ))}
+              canSend={canSend}
+              isStreaming={isStreaming}
+              onSend={send}
+              onStop={stop}
+              isSmall={isSmall}
+              isSidebarCollapsed={isSidebarCollapsed}
+              onToggleSidebar={() => setIsSidebarCollapsed((v) => !v)}
+            />
 
-                            <button
-                              type="button"
-                              className="ml-1 text-xs text-gray-300/80 hover:text-gray-200 underline underline-offset-2"
-                              onClick={() => setAttachedFiles([])}
-                              disabled={isStreaming}
-                            >
-                              Clear
-                            </button>
-                          </div>
-                        ) : null}
-
-                        <textarea
-                          className="w-full resize-none bg-transparent outline-none text-gray-100 placeholder:text-gray-400 text-sm leading-relaxed"
-                          placeholder="Send a message…"
-                          rows={2}
-                          value={input}
-                          onChange={(e) => setInput(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-
-                              const text = (e.currentTarget.value || "").trim();
-                              if (!text && attachedFiles.length === 0) return; // hard guard
-
-                              send();
-                            }
-                          }}
-                          disabled={isStreaming}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between gap-3 px-3 pb-3">
-                        <div className="flex items-center gap-1">
-                          <IconGhostButton
-                            label="Toggle Sidebar"
-                            onClick={() => setIsSidebarCollapsed((v) => !v)}
-                            disabled={isStreaming}
-                          >
-                            <svg
-                              viewBox="0 0 24 24"
-                              className="h-5 w-5"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              aria-hidden="true"
-                            >
-                              <rect x="4" y="5" width="16" height="14" rx="2" />
-                              <path d="M12 5v14" />
-                            </svg>
-                          </IconGhostButton>
-
-                          <Tooltip text="Attach files" side="bottom">
-                            <label
-                              className={[
-                                "h-7 w-7 rounded-lg",
-                                "flex items-center justify-center",
-                                "text-white/70 hover:text-white",
-                                "hover:bg-white/6",
-                                "transition cursor-pointer",
-                              ].join(" ")}
-                              aria-label="Attach files"
-                            >
-                              <svg
-                                viewBox="0 0 24 24"
-                                className="h-5 w-5"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="2"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                aria-hidden="true"
-                              >
-                                <path d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.84 8.84a2 2 0 0 1-2.83-2.83l8.49-8.49" />
-                              </svg>
-
-                              <input
-                                type="file"
-                                multiple
-                                accept={[
-                                  "application/pdf",
-                                  "text/plain",
-                                  "text/markdown",
-                                  "application/json",
-                                  "text/csv",
-                                  "application/xml",
-                                  "text/xml",
-                                  // Office (optional)
-                                  "application/msword",
-                                  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                  "application/vnd.ms-excel",
-                                  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                                  // images (only if you really want them here)
-                                  // "image/*",
-                                ].join(",")}
-                                className="hidden"
-                                onChange={(e) => {
-                                  const files = Array.from(e.target.files || []);
-                                  addFiles(files);
-                                  e.currentTarget.value = "";
-                                }}
-                                disabled={isStreaming}
-                              />
-                            </label>
-                          </Tooltip>
-
-                          <ModelDropdown
-                            value={model}
-                            options={modelChoices}
-                            onChange={(v) => {
-                              if (v.startsWith("__header__:")) return;
-                              setModel(v);
-                            }}
-                            disabled={isStreaming}
-                          />
-                        </div>
-
-                        <button
-                          className="h-10 w-10 rounded-full bg-blue-600 hover:bg-blue-500 transition disabled:opacity-40 flex items-center justify-center"
-                          onClick={isStreaming ? stop : send}
-                          disabled={isStreaming ? false : !canSend}
-                          title={isStreaming ? "Stop" : "Send"}
-                        >
-                          {isStreaming ? (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill="white"
-                              className="w-5 h-5"
-                              aria-hidden="true"
-                            >
-                              <rect x="7" y="7" width="10" height="10" rx="2" />
-                            </svg>
-                          ) : (
-                            <svg
-                              xmlns="http://www.w3.org/2000/svg"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="white"
-                              strokeWidth="2"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
-                              className="w-5 h-5"
-                              aria-hidden="true"
-                            >
-                              <path d="M2 2L13 13" />
-                              <path d="M2 2L9 22L13 13L22 9L2 2Z" />
-                            </svg>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-1 text-center text-xs text-gray-500">
-                    Multi-LLM Platform • Streaming enabled
-                  </div>
-                </div>
-              </div>
-            </div>
           </div>
         </section >
       </div >
