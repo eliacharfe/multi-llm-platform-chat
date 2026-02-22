@@ -350,6 +350,7 @@ uvicorn main:app --host 0.0.0.0 --port 8000
 Built by **Eliachar Feig**  
 Senior Mobile & Full-Stack Engineer 
 iOS · Flutter · React · AI Systems · Architecture-first development
+
 🌐 Website: https://www.eliacharfeig.com/
 
 ---
