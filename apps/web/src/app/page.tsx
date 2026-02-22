@@ -926,7 +926,7 @@ export default function Page() {
                             </div>
                           </button>
 
-                          <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 transition">
+                          <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100">
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1259,18 +1259,6 @@ export default function Page() {
                                   }}
                                   disabled={isStreaming}
                                 />
-                                {/* <button
-                                  type="button"
-                                  className="opacity-80 hover:opacity-100"
-                                  onClick={() =>
-                                    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx))
-                                  }
-                                  disabled={isStreaming}
-                                  aria-label={`Remove ${f.name}`}
-                                  title="Remove"
-                                >
-                                  ✕
-                                </button> */}
                               </div>
                             ))}
 
