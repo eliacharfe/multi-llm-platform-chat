@@ -9,6 +9,7 @@ import * as Prism from "prismjs";
 import "@/lib/prism";
 
 import CopyButton from "@/components/ui/CopyButton";
+import ActionButton from "@/components/ui/ActionButton";
 
 export type Msg = { role: "user" | "assistant" | "system"; content: string };
 
@@ -18,6 +19,20 @@ function Spinner() {
             className="inline-block h-4 w-4 rounded-full border-2 border-white/20 border-t-white/70 animate-spin"
             aria-label="Loading"
         />
+    );
+}
+
+function RetryButton({ onClick }: { onClick: () => void }) {
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            title="Try again"
+            className="inline-flex items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-200 hover:bg-white/10 transition"
+        >
+            <span aria-hidden="true">↻</span>
+            <span>Retry</span>
+        </button>
     );
 }
 
@@ -44,12 +59,16 @@ export default function MessageList({
     thinkingLabel,
     model,
     onSuggestion,
+    conversationText,
+    onRetry,
 }: {
     messages: Msg[];
     isStreaming: boolean;
     thinkingLabel: string;
     model: string;
     onSuggestion: (text: string) => void;
+    conversationText: string;
+    onRetry: () => void;
 }) {
     const suggestions = [
         {
@@ -69,6 +88,8 @@ export default function MessageList({
             s: "When to choose each in real projects",
         },
     ];
+
+
 
     if (messages.length === 0) {
         return (
@@ -231,11 +252,29 @@ export default function MessageList({
                                         ) : null}
                                     </div>
 
-                                    {isAssistant && (m.content?.length ?? 0) > 0 ? (
+                                    {isAssistant &&
+                                        (m.content?.length ?? 0) > 0 &&
+                                        idx === messages.length - 1 &&
+                                        !isStreaming ? (
+                                        <div className={["mt-2 flex items-center gap-2", isRTL ? "justify-end" : "justify-start"].join(" ")}>
+                                            <CopyButton
+                                                text={conversationText}
+                                                title="Copy conversation"
+                                            />
+                                            <ActionButton
+                                                label="Retry"
+                                                title="Try again"
+                                                icon="↻"
+                                                onClick={onRetry}
+                                            />
+                                        </div>
+                                    ) : null}
+
+                                    {/* {isAssistant && (m.content?.length ?? 0) > 0 ? (
                                         <div className={["mt-2 flex", isRTL ? "justify-end" : "justify-start"].join(" ")}>
                                             <CopyButton text={m.content} />
                                         </div>
-                                    ) : null}
+                                    ) : null} */}
                                 </div>
                             )}
                         </div>

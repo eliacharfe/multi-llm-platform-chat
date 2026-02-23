@@ -964,6 +964,36 @@ You are a senior software engineer and technical writer.
 {file_context}
 """.strip()
 
+# --- Retry instruction  ---
+RETRY_SYSTEM = "\n".join([
+    "User requested a retry.",
+    "Provide a new answer to the last user message using a different approach than before.",
+    "Use a different example than the previous answer.",
+    "Be correct, clear, and helpful.",
+    "Do not mention that this is a retry unless asked.",
+])
+
+
+def _inject_retry_system_before_last_user(history: list["ChatMsg"]) -> list["ChatMsg"]:
+    """
+    Insert RETRY_SYSTEM as a system message right BEFORE the last user message.
+    This avoids appending system at the end (which can cause weird behavior).
+    """
+    if not history:
+        return [ChatMsg(role="system", content=RETRY_SYSTEM)]
+
+    last_user_idx = None
+    for i in range(len(history) - 1, -1, -1):
+        if history[i].role == "user":
+            last_user_idx = i
+            break
+
+    if last_user_idx is None:
+        return [ChatMsg(role="system", content=RETRY_SYSTEM)] + history
+
+    return history[:last_user_idx] + [ChatMsg(role="system", content=RETRY_SYSTEM)] + history[last_user_idx:]
+
+
 @app.post("/v1/chat/stream_with_files")
 async def chat_stream_with_files(
     chat_id: str = Form(...),
@@ -971,6 +1001,7 @@ async def chat_stream_with_files(
     temperature: Optional[float] = Form(None),
     message: str = Form(""),
     messages: str = Form("[]"),
+    retry: bool = Form(False),
     files: List[UploadFile] = File(default=[]),
     authorization: str | None = Header(default=None),
 ):
@@ -989,47 +1020,28 @@ async def chat_stream_with_files(
         req_msgs = []
 
     has_files = len(files) > 0
-    user_text = (message or "").strip()
-
-    if not user_text and has_files:
-        user_text = (
-            "Please analyze the attached file(s).\n"
-            "- Give a short overview\n"
-            "- Identify key responsibilities\n"
-            "- Point out potential bugs, edge cases, and improvements\n"
-            "- Suggest refactors (with example code)\n"
-        )
-
-    if not user_text and not has_files:
-        return StreamingResponse(
-            iter([sse({"error": "Please type a message.", "error_short": "Please type a message."}), sse({"done": True})]),
-            media_type="text/event-stream",
-)
-
     file_context, images, filenames = await split_uploads(files) if has_files else ("", [], [])
     has_images = len(images) > 0
 
     if has_images and model not in VISION_MODELS:
         return StreamingResponse(
-            iter([sse({"error": "Selected model doesn't support images. Please choose a vision model.",
-                    "error_short": "Model doesn't support images."}),
-                sse({"done": True})]),
+            iter([
+                sse({
+                    "error": "Selected model doesn't support images. Please choose a vision model.",
+                    "error_short": "Model doesn't support images."
+                }),
+                sse({"done": True})
+            ]),
             media_type="text/event-stream",
         )
 
-    if has_files:
-        user_payload = build_file_task_prompt(
-            user_message=user_text,
-            file_context=file_context,
-            filenames=filenames,
-            has_images=has_images,
-        )
-    else:
-        user_payload = build_general_task_prompt(user_text)
-
     provider, model_name = parse_provider_model(model)
 
-    # ----- Persist user msg + create assistant row -----
+    # -------------------------------------------------------------------------
+    # DB: load chat, handle retry vs normal, persist user/assistant rows
+    # -------------------------------------------------------------------------
+    previous_assistant_content: str = ""  
+
     async with SessionLocal() as session:
         chat = (await session.execute(
             select(ChatRow)
@@ -1044,10 +1056,50 @@ async def chat_stream_with_files(
             chat.model = model
             chat.updated_at = utcnow()
 
-        last_user = ChatMsg(role="user", content=user_text)
+        if retry:
+            last_user_row = next(
+                (m for m in reversed(chat.messages) if m.role == "user" and (m.content or "").strip()),
+                None,
+            )
+            if not last_user_row:
+                raise HTTPException(400, "No user message to retry")
 
-        user_row = MessageRow(chat_id=chat.id, role="user", content=last_user.content)
-        session.add(user_row)
+            user_text = (last_user_row.content or "").strip()
+
+            last_assistant_row = next(
+                (m for m in reversed(chat.messages) if m.role == "assistant"),
+                None,
+            )
+            if last_assistant_row:
+                previous_assistant_content = (last_assistant_row.content or "").strip()
+                await session.delete(last_assistant_row)
+                await session.flush()
+
+            last_user = ChatMsg(role="user", content=user_text)
+
+        else:
+            user_text = (message or "").strip()
+
+            if not user_text and has_files:
+                user_text = (
+                    "Please analyze the attached file(s).\n"
+                    "- Give a short overview\n"
+                    "- Identify key responsibilities\n"
+                    "- Point out potential bugs, edge cases, and improvements\n"
+                    "- Suggest refactors (with example code)\n"
+                )
+
+            if not user_text and not has_files:
+                return StreamingResponse(
+                    iter([
+                        sse({"error": "Please type a message.", "error_short": "Please type a message."}),
+                        sse({"done": True}),
+                    ]),
+                    media_type="text/event-stream",
+                )
+
+            last_user = ChatMsg(role="user", content=user_text)
+            session.add(MessageRow(chat_id=chat.id, role="user", content=user_text))
 
         assistant_row = MessageRow(chat_id=chat.id, role="assistant", content="")
         session.add(assistant_row)
@@ -1060,7 +1112,19 @@ async def chat_stream_with_files(
         await session.refresh(assistant_row)
         assistant_id = assistant_row.id
 
-    # ----- Stream + flush into DB -----
+    if has_files:
+        user_payload = build_file_task_prompt(
+            user_message=user_text,
+            file_context=file_context,
+            filenames=filenames,
+            has_images=has_images,
+        )
+    else:
+        user_payload = build_general_task_prompt(user_text)
+
+    # -------------------------------------------------------------------------
+    # Stream + flush into DB
+    # -------------------------------------------------------------------------
     async def gen():
         buffer_text = ""
         last_flush = time.monotonic()
@@ -1072,7 +1136,10 @@ async def chat_stream_with_files(
             if not buffer_text:
                 return
             if not force:
-                if (time.monotonic() - last_flush) < FLUSH_INTERVAL_SEC and len(buffer_text) < FLUSH_MIN_CHARS:
+                if (
+                    (time.monotonic() - last_flush) < FLUSH_INTERVAL_SEC
+                    and len(buffer_text) < FLUSH_MIN_CHARS
+                ):
                     return
 
             chunk = buffer_text
@@ -1083,6 +1150,7 @@ async def chat_stream_with_files(
                 msg = (await session.execute(
                     select(MessageRow).where(MessageRow.id == assistant_id)
                 )).scalars().first()
+
                 if msg:
                     msg.content = (msg.content or "") + chunk
                 else:
@@ -1095,7 +1163,6 @@ async def chat_stream_with_files(
                     chat2.updated_at = utcnow()
 
                 await session.commit()
-                print(f"[flush] ✅ flushed {len(chunk)} chars to DB (assistant_id={assistant_id})")
 
         try:
             async with SessionLocal() as session:
@@ -1106,7 +1173,6 @@ async def chat_stream_with_files(
                 )).scalars().first()
 
                 if not chat:
-                    print(f"[gen] ❌ chat {chat_id} not found for user {user_id}")
                     yield sse({"error": "Chat not found", "error_short": "Chat not found."})
                     yield sse({"done": True})
                     return
@@ -1117,25 +1183,35 @@ async def chat_stream_with_files(
                     if not (m.role == "assistant" and not (m.content or "").strip())
                 ]
 
-                print(f"[gen] raw_history ({len(raw_history)} msgs): "
-                    + ", ".join(f"{m.role}:{len(m.content)}ch" for m in raw_history))
-
                 history = raw_history
+
+                if retry and previous_assistant_content:
+                    last_user_idx = next(
+                        (i for i in range(len(history) - 1, -1, -1) if history[i].role == "user"),
+                        None,
+                    )
+                    if last_user_idx is not None:
+                        history.insert(
+                            last_user_idx,
+                            ChatMsg(role="assistant", content=previous_assistant_content),
+                        )
+
                 replaced = False
                 for i in range(len(history) - 1, -1, -1):
                     if history[i].role == "user":
-                        print(f"[gen] replacing history[{i}] user msg with enriched payload "
-                            f"({len(user_payload)} chars)")
                         history[i] = ChatMsg(role="user", content=user_payload)
                         replaced = True
                         break
-
                 if not replaced:
-                    print(f"[gen] no user msg found in history — appending payload")
                     history.append(ChatMsg(role="user", content=user_payload))
 
-                print(f"[gen] final history ({len(history)} msgs): "
-                    + ", ".join(f"{m.role}:{len(m.content)}ch" for m in history))
+                if retry:
+                    history = _inject_retry_system_before_last_user(history)
+
+                if retry:
+                    print("[RETRY DEBUG] history sent to LLM:")
+                    for i, m in enumerate(history):
+                        print(f"  [{i}] role={m.role} len={len(m.content)}ch preview={m.content[:80]!r}")
 
                 llm_req = ChatRequest(
                     chat_id=chat_id,
@@ -1143,8 +1219,6 @@ async def chat_stream_with_files(
                     messages=history,
                     temperature=temperature,
                 )
-
-            print(f"[gen] 🚀 starting stream — provider={provider}, model={model_name}")
 
             loop = asyncio.get_event_loop()
 
@@ -1161,34 +1235,27 @@ async def chat_stream_with_files(
                 raise RuntimeError(f"Unknown provider: {provider}")
 
             it = iter(sync_iter())
-            chunk_count = 0
 
             while True:
                 try:
                     chunk = await loop.run_in_executor(None, lambda: next(it))
                 except StopIteration:
-                    print(f"[gen] stream exhausted after {chunk_count} SSE chunks")
                     break
 
                 yield chunk
-                chunk_count += 1
 
                 if chunk.startswith("data: "):
                     payload = chunk[6:].strip()
                     try:
                         obj = json.loads(payload)
                     except Exception:
-                        print(f"[gen] ⚠️ failed to parse SSE payload: {payload!r}")
                         obj = None
 
                     if isinstance(obj, dict) and obj.get("t"):
                         buffer_text += obj["t"]
-                        if chunk_count <= 3:
-                            print(f"[gen] first tokens: {obj['t']!r}")
                         await flush(False)
 
                     if isinstance(obj, dict) and obj.get("done"):
-                        print(f"[gen] ✅ done signal received after {chunk_count} chunks")
                         await flush(True)
                         return
 
@@ -1196,13 +1263,10 @@ async def chat_stream_with_files(
             yield sse({"done": True})
 
         except Exception as e:
-            import traceback
-            print(f"[gen] ❌ EXCEPTION: {type(e).__name__}: {e}")
-            traceback.print_exc()
             try:
                 await flush(True)
-            except Exception as fe:
-                print(f"[gen] ❌ flush also failed: {fe}")
+            except Exception:
+                pass
 
             full = f"{type(e).__name__}: {str(e)}"
             yield sse({"error": full, "error_short": short_error_message(full)})

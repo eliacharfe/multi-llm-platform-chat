@@ -1,7 +1,8 @@
+
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import Tooltip from "@/components/ui/Tooltip";
+import ActionButton from "@/components/ui/ActionButton";
 
 async function copyToClipboard(text: string) {
     if (navigator?.clipboard?.writeText) {
@@ -46,39 +47,28 @@ export default function CopyButton({
     }, [text]);
 
     return (
-        <Tooltip text={copied ? "Copied!" : title} side="bottom" className={className}>
-            <button
-                type="button"
-                onClick={onCopy}
-                aria-label="Copy to clipboard"
-                className={`
-          relative flex items-center gap-1.5
-          px-2 py-1 text-[10px]
-          rounded-md border
-          transition-all duration-200 ease-out
-          active:scale-95
-          ${copied
-                        ? "bg-green-500/15 border-green-400/40 text-green-300"
-                        : "bg-black/20 border-white/10 text-gray-300 hover:bg-black/30 hover:border-white/20"
-                    }
-        `}
-            >
-                <span
-                    className={`transition-all duration-200 ${copied ? "opacity-0 scale-75" : "opacity-100 scale-100"
-                        }`}
-                >
-                    ⧉
+        <ActionButton
+            onClick={onCopy}
+            className={className}
+            title={copied ? "Copied!" : title}
+            variant={copied ? "success" : "default"}
+            label={copied ? "Copied" : "Copy"}
+            icon={
+                <span className="relative w-3 h-3 inline-block">
+                    <span
+                        className={`absolute inset-0 transition-all duration-200 ${copied ? "opacity-0 scale-75" : "opacity-100 scale-100"
+                            }`}
+                    >
+                        ⧉
+                    </span>
+                    <span
+                        className={`absolute inset-0 transition-all duration-200 ${copied ? "opacity-100 scale-100" : "opacity-0 scale-75"
+                            }`}
+                    >
+                        ✓
+                    </span>
                 </span>
-
-                <span
-                    className={`absolute left-2 transition-all duration-200 ${copied ? "opacity-100 scale-100" : "opacity-0 scale-75"
-                        }`}
-                >
-                    ✓
-                </span>
-
-                <span>{copied ? "Copied" : "Copy"}</span>
-            </button>
-        </Tooltip>
+            }
+        />
     );
 }

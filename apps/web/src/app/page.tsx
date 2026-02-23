@@ -25,6 +25,9 @@ import {
   buildSectionedChoices,
 } from "@/lib/models";
 
+
+
+
 export default function Page() {
   const DEFAULT_MODEL = "gemini:models/gemini-2.5-flash";
 
@@ -234,6 +237,44 @@ export default function Page() {
     return created.chat_id;
   }
 
+  async function streamSSE(
+    res: Response,
+    signal: AbortSignal,
+    onToken: (t: string) => void,
+    onError: (msg: string) => void,
+  ) {
+    const reader = res.body!.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "";
+
+    const process = () => {
+      buffer = buffer.replace(/\r\n/g, "\n");
+      while (true) {
+        const idx = buffer.indexOf("\n\n");
+        if (idx === -1) break;
+        const block = buffer.slice(0, idx);
+        buffer = buffer.slice(idx + 2);
+        const lines = block.split("\n").filter(l => l.startsWith("data:"));
+        if (!lines.length) continue;
+        let obj: any;
+        try { obj = JSON.parse(lines.map(l => l.slice(5).replace(/^\s/, "")).join("\n")); }
+        catch { continue; }
+        if (obj.done) return true;
+        if (obj.error) { onError(String(obj.error_short ?? obj.error ?? "Unknown error")); return true; }
+        if (obj.t) onToken(obj.t);
+      }
+      return false;
+    };
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (value) { buffer += decoder.decode(value, { stream: true }); if (process()) break; }
+      if (done) break;
+    }
+    buffer += decoder.decode();
+    process();
+  }
+
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const token = await auth.currentUser?.getIdToken();
 
@@ -270,227 +311,6 @@ export default function Page() {
     if (!text) return undefined as T;
 
     return JSON.parse(text) as T;
-  }
-
-  async function send() {
-    if (!auth.currentUser) {
-      setAuthOpen(true);
-      return;
-    }
-
-    if (!canSend) return;
-
-    const userText =
-      input.trim() ||
-      (attachedFiles.length ? "Summarize the attached file(s)." : "");
-
-    if (!userText && attachedFiles.length === 0) return;
-
-    const chatId = await ensureChatId();
-
-    const DEBUG_SSE = model.startsWith("openai:gpt-5");
-    console.log("[send] model:", model, "chatId:", chatId);
-
-    const userMsg: Msg = { role: "user", content: userText };
-    const nextMessages = [...messages, userMsg];
-
-    setMessages([...nextMessages, { role: "assistant", content: "" }]);
-
-    autoScrollEnabledRef.current = true;
-    scrollToBottom(true);
-
-    setInput("");
-
-    isStreamingRef.current = true;
-    setIsStreaming(true);
-
-    const ac = new AbortController();
-    abortRef.current = ac;
-
-    try {
-      const fd = new FormData();
-      fd.append("chat_id", chatId);
-      fd.append("model", model);
-      fd.append("temperature", String(getTemperature(model)));
-      fd.append("message", userText);
-      fd.append("messages", JSON.stringify(nextMessages));
-
-      for (const f of attachedFiles) {
-        fd.append("files", f);
-      }
-
-      const token = await auth.currentUser?.getIdToken();
-
-      const res = await fetch(`${apiUrl}/v1/chat/stream_with_files`, {
-        method: "POST",
-        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
-        signal: ac.signal,
-        body: fd,
-      });
-
-      if (res.status === 401) {
-        setAuthOpen(true);
-        setIsStreaming(false);
-        isStreamingRef.current = false;
-        abortRef.current = null;
-        return;
-      }
-
-      if (!res.ok || !res.body) {
-        const txt = await res.text().catch(() => "");
-        throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
-      }
-
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-
-      let buffer = "";
-      let finished = false;
-
-      const processBuffer = () => {
-        buffer = buffer.replace(/\r\n/g, "\n");
-
-        while (true) {
-          const idx = buffer.indexOf("\n\n");
-          if (idx === -1) break;
-
-          const eventBlock = buffer.slice(0, idx);
-          buffer = buffer.slice(idx + 2);
-
-          if (DEBUG_SSE) {
-            console.log("[sse] raw eventBlock:", JSON.stringify(eventBlock));
-          }
-
-          const dataLines: string[] = [];
-          for (const line of eventBlock.split("\n")) {
-            if (line.startsWith("data:")) {
-              dataLines.push(line.slice(5).replace(/^\s/, ""));
-            }
-          }
-
-          if (!dataLines.length) {
-            if (DEBUG_SSE) console.log("[sse] (skip) no data: lines");
-            continue;
-          }
-
-          const payload = dataLines.join("\n");
-
-          if (DEBUG_SSE) {
-            console.log("[sse] payload:", payload);
-          }
-
-          let obj: any;
-          try {
-            obj = JSON.parse(payload);
-          } catch (e) {
-            if (DEBUG_SSE) console.warn("[sse] JSON.parse failed:", e);
-            continue;
-          }
-
-          if (DEBUG_SSE) console.log("[sse] obj:", obj);
-
-          if (obj.done) {
-            if (DEBUG_SSE) console.log("[sse] done received");
-            finished = true;
-            return;
-          }
-
-          if (obj.error) {
-            const short = String(obj.error_short ?? obj.error ?? "Unknown error");
-
-            if (DEBUG_SSE)
-              console.error("[sse] error received:", {
-                error: obj.error,
-                error_short: obj.error_short,
-              });
-
-            setMessages((prev) => {
-              const copy = [...prev];
-              const last = copy[copy.length - 1];
-              const errText = `⚠️ ${short}`;
-
-              if (last?.role === "assistant" && (last.content || "") === "") {
-                copy[copy.length - 1] = { ...last, content: errText };
-                return copy;
-              }
-              if (last?.role === "assistant") {
-                copy[copy.length - 1] = {
-                  ...last,
-                  content: `${last.content}\n\n${errText}`,
-                };
-                return copy;
-              }
-              return [...copy, { role: "assistant", content: errText }];
-            });
-
-            finished = true;
-            return;
-          }
-
-          const token: string = obj.t ?? "";
-          if (!token) {
-            if (DEBUG_SSE) console.warn("[sse] no token (obj.t empty)");
-            continue;
-          }
-
-          if (DEBUG_SSE) console.log("[sse] token:", JSON.stringify(token));
-
-          setMessages((prev) => {
-            const copy = [...prev];
-            const last = copy[copy.length - 1];
-            if (last?.role === "assistant") {
-              const next = (last.content || "") + token;
-              copy[copy.length - 1] = { ...last, content: next };
-              if (DEBUG_SSE) console.log("[ui] assistant len:", next.length);
-            }
-            return copy;
-          });
-
-          scrollToBottom(false);
-        }
-      };
-
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (value) {
-          buffer += decoder.decode(value, { stream: true });
-          processBuffer();
-        }
-
-        if (done) break;
-      }
-
-      buffer += decoder.decode();
-      processBuffer();
-
-      if (!finished) finished = true;
-
-      setAttachedFiles([]);
-      scrollToBottom(true);
-      refreshChats().catch(() => { });
-    } catch (e: any) {
-      if (e?.name !== "AbortError") {
-        setMessages((prev) => {
-          const copy = [...prev];
-          const last = copy[copy.length - 1];
-
-          if (last?.role === "assistant" && (last.content || "") === "") {
-            copy[copy.length - 1] = {
-              ...last,
-              content: `⚠️ ${String(e?.message || e)}`,
-            };
-            return copy;
-          }
-
-          return [...copy, { role: "assistant", content: `⚠️ ${String(e?.message || e)}` }];
-        });
-      }
-    } finally {
-      setIsStreaming(false);
-      abortRef.current = null;
-      isStreamingRef.current = false;
-    }
   }
 
   function stop() {
@@ -623,6 +443,109 @@ export default function Page() {
     return chats.filter((c) => (c.title || "").toLowerCase().includes(q));
   }, [chats, chatSearch]);
 
+  const conversationText = useMemo(() => {
+    return messages
+      .filter((m) => m.role !== "system")
+      .map((m) => `${m.role.toUpperCase()}:\n${m.content}`)
+      .join("\n\n---\n\n");
+  }, [messages]);
+
+  async function submit(isRetry = false) {
+    if (!auth.currentUser) { setAuthOpen(true); return; }
+    if (!isRetry && !canSend) return;
+    if (isRetry && (!activeChatId || isStreamingRef.current)) return;
+
+    const chatId = await ensureChatId();
+    const userText = isRetry
+      ? (messages.findLast(m => m.role === "user")?.content ?? "")
+      : input.trim() || (attachedFiles.length ? "Summarize the attached file(s)." : "");
+
+    if (!userText && !attachedFiles.length && !isRetry) return;
+
+    const base = isRetry
+      ? messages.slice(0, messages.map((m, i) => ({ m, i })).reverse().find(x => x.m.role === "user")!.i + 1)
+      : [...messages, { role: "user" as const, content: userText }];
+
+    setMessages([...base, { role: "assistant", content: "" }]);
+    if (!isRetry) setInput("");
+    setAttachedFiles([]);
+    autoScrollEnabledRef.current = true;
+    scrollToBottom(true);
+
+    isStreamingRef.current = true;
+    setIsStreaming(true);
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    try {
+      const fd = new FormData();
+      fd.append("chat_id", chatId);
+      fd.append("model", model);
+      fd.append("temperature", String(getTemperature(model)));
+      if (isRetry) {
+        fd.append("retry", "true");
+      } else {
+        fd.append("message", userText);
+        fd.append("messages", JSON.stringify(base));
+        for (const f of attachedFiles) fd.append("files", f);
+      }
+
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${apiUrl}/v1/chat/stream_with_files`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal: ac.signal,
+        body: fd,
+      });
+
+      if (res.status === 401) { setAuthOpen(true); return; }
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      await streamSSE(
+        res,
+        ac.signal,
+        (t) => {
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === "assistant")
+              copy[copy.length - 1] = { ...last, content: (last.content || "") + t };
+            return copy;
+          });
+          scrollToBottom(false);
+        },
+        (errMsg) => {
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            const text = `⚠️ ${errMsg}`;
+            if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: text };
+            else copy.push({ role: "assistant", content: text });
+            return copy;
+          });
+        },
+      );
+
+      scrollToBottom(true);
+      refreshChats().catch(() => { });
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        setMessages(prev => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          const text = `⚠️ ${String(e?.message || e)}`;
+          if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: text };
+          else copy.push({ role: "assistant", content: text });
+          return copy;
+        });
+      }
+    } finally {
+      setIsStreaming(false);
+      abortRef.current = null;
+      isStreamingRef.current = false;
+    }
+  }
+
   return (
     <main className="fixed inset-0 h-dvh w-screen bg-[#252525] text-gray-200 overflow-hidden flex flex-col">
       <LogoSplash
@@ -733,6 +656,8 @@ export default function Page() {
                   model={model}
                   thinkingLabel={thinkingText(model)}
                   onSuggestion={(text) => setInput(text)}
+                  conversationText={conversationText}
+                  onRetry={() => submit(true)}
                 />
               </div>
             </div>
@@ -752,7 +677,7 @@ export default function Page() {
               }}
               canSend={canSend}
               isStreaming={isStreaming}
-              onSend={send}
+              onSend={() => submit(false)}
               onStop={stop}
               isSmall={isSmall}
               isSidebarCollapsed={isSidebarCollapsed}
