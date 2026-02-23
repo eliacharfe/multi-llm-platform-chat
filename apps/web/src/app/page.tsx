@@ -3,7 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import AuthDialog from "@/components/ui/AuthDialog";
@@ -77,32 +77,6 @@ export default function Page() {
     return () => window.clearTimeout(t);
   }, [authReady]);
 
-  useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (u) => {
-      setAuthReady(true);
-      setIsAuthed(!!u);
-
-      if (!u) {
-        setUserLabel("Sign in");
-        setChats([]);
-        setActiveChatId(null);
-        setMessages([]);
-        setInput("");
-        setAttachedFiles([]);
-        stop();
-        return;
-      }
-      setUserLabel(u.displayName || u.email || "Account");
-
-      try {
-        await refreshChats();
-      } catch {
-        // ignore
-      }
-    });
-
-    return () => unsub();
-  }, []);
 
   function openConfirm(opts: {
     title: string;
@@ -121,76 +95,68 @@ export default function Page() {
     setConfirmOpen(true);
   }
 
-  function closeConfirm() {
-    setConfirmOpen(false);
-    confirmActionRef.current = null;
-  }
+  async function refreshChats(user?: User | null) {
+    const u = user ?? auth.currentUser;
 
-  const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
-  const canSend = useMemo(
-    () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
-    [input, attachedFiles.length, isStreaming]
-  );
-
-  const filteredChats = useMemo(() => {
-    const q = chatSearch.trim().toLowerCase();
-    if (!q) return chats;
-    return chats.filter((c) => (c.title || "").toLowerCase().includes(q));
-  }, [chats, chatSearch]);
-
-
-
-  async function api<T>(path: string, init?: RequestInit): Promise<T> {
-    const token = await auth.currentUser?.getIdToken();
-
-    const headers: Record<string, string> = {
-      ...(init?.headers as any),
-    };
-
-    const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-    if (!isFormData) headers["Content-Type"] = "application/json";
-
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const res = await fetch(`${apiUrl}${path}`, {
-      ...init,
-      headers,
-    });
-
-    if (res.status === 401) {
-      setAuthOpen(true);
-      return undefined as T;
-    }
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
-    }
-
-    if (res.status === 204) return undefined as T;
-
-    const text = await res.text();
-    if (!text) return undefined as T;
-
-    return JSON.parse(text) as T;
-  }
-
-  async function refreshChats() {
-    if (!auth.currentUser) {
+    if (!u) {
       setChats([]);
       return;
     }
 
     setIsSidebarLoading(true);
     try {
-      const data = await api<{ chats: ChatListItem[] }>("/v1/chats", { method: "GET" });
+      const token = await u.getIdToken();
+
+      const res = await fetch(`${apiUrl}/v1/chats`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (res.status === 401) {
+        setAuthOpen(true);
+        setChats([]);
+        return;
+      }
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => "");
+        throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
+      }
+
+      const data = (await res.json()) as { chats: ChatListItem[] };
       setChats(data?.chats || []);
     } finally {
       setIsSidebarLoading(false);
     }
   }
+
+  useEffect(() => {
+    const unsub = onAuthStateChanged(auth, async (u) => {
+      setAuthReady(true);
+      setIsAuthed(!!u);
+
+      if (!u) {
+        setUserLabel("Sign in");
+        setChats([]);
+        setActiveChatId(null);
+        setMessages([]);
+        setInput("");
+        setAttachedFiles([]);
+        stop();
+        return;
+      }
+
+      setUserLabel(u.displayName || u.email || "Account");
+
+      try {
+        await refreshChats(u);
+      } catch {
+        // ignore
+      }
+    });
+
+    return () => unsub();
+  }, []);
 
   function newDraftChat() {
     stop();
@@ -615,6 +581,62 @@ export default function Page() {
   }, [isStreaming]);
 
 
+
+  function closeConfirm() {
+    setConfirmOpen(false);
+    confirmActionRef.current = null;
+  }
+
+  const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
+  const canSend = useMemo(
+    () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
+    [input, attachedFiles.length, isStreaming]
+  );
+
+  const filteredChats = useMemo(() => {
+    const q = chatSearch.trim().toLowerCase();
+    if (!q) return chats;
+    return chats.filter((c) => (c.title || "").toLowerCase().includes(q));
+  }, [chats, chatSearch]);
+
+
+
+  async function api<T>(path: string, init?: RequestInit): Promise<T> {
+    const token = await auth.currentUser?.getIdToken();
+
+    const headers: Record<string, string> = {
+      ...(init?.headers as any),
+    };
+
+    const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
+    if (!isFormData) headers["Content-Type"] = "application/json";
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${apiUrl}${path}`, {
+      ...init,
+      headers,
+    });
+
+    if (res.status === 401) {
+      setAuthOpen(true);
+      return undefined as T;
+    }
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
+    }
+
+    if (res.status === 204) return undefined as T;
+
+    const text = await res.text();
+    if (!text) return undefined as T;
+
+    return JSON.parse(text) as T;
+  }
 
   return (
     // <main className="h-dvh w-screen bg-[#252525] text-gray-200 overflow-hidden">
