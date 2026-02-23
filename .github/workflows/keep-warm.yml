@@ -2,38 +2,49 @@ name: Keep Render Warm
 
 on:
   schedule:
-    - cron: "*/3 * * * *"   # every 3 minutes (UTC)
-  workflow_dispatch: {}      # allows manual run from GitHub UI
+    - cron: "*/4 * * * *"
+  workflow_dispatch: {}
 
 jobs:
-  ping:
+  warm:
     runs-on: ubuntu-latest
-    timeout-minutes: 2
+    timeout-minutes: 4
 
     steps:
-      - name: Ping backend warm-db
+      - name: Ping backend health (retry once)
         env:
           HEALTH_URL: ${{ secrets.HEALTH_URL }}
         run: |
+          set -e
+
           echo "Pinging: $HEALTH_URL"
-
-          # curl:
-          # - retries 3 times
-          # - max 15s per attempt
-          # - prints status + time
-          # - fails if not 200
-          curl -sS -L \
-            --max-time 15 \
-            --retry 3 \
-            --retry-delay 3 \
-            --retry-connrefused \
+          curl -sS -L --max-time 20 \
             -o /dev/null \
-            -w "status=%{http_code} time=%{time_total}s\n" \
+            -w "health status=%{http_code} time=%{time_total}s\n" \
             -H "Cache-Control: no-store" \
-            "$HEALTH_URL" | tee /tmp/curl_out.txt
+            "$HEALTH_URL" \
+          || (echo "health failed, retrying in 3s..." && sleep 3 && \
+              curl -sS -L --max-time 20 \
+                -o /dev/null \
+                -w "health (retry) status=%{http_code} time=%{time_total}s\n" \
+                -H "Cache-Control: no-store" \
+                "$HEALTH_URL")
 
-          # enforce status 200
-          if ! grep -q "status=200" /tmp/curl_out.txt; then
-            echo "Health check failed"
-            exit 1
-          fi
+      - name: Warm DB (retry once)
+        env:
+          WARM_DB_URL: ${{ secrets.WARM_DB_URL }}
+        run: |
+          set -e
+
+          echo "Warming DB: $WARM_DB_URL"
+          curl -sS -L --max-time 25 \
+            -o /dev/null \
+            -w "warm-db status=%{http_code} time=%{time_total}s\n" \
+            -H "Cache-Control: no-store" \
+            "$WARM_DB_URL" \
+          || (echo "warm-db failed, retrying in 3s..." && sleep 3 && \
+              curl -sS -L --max-time 25 \
+                -o /dev/null \
+                -w "warm-db (retry) status=%{http_code} time=%{time_total}s\n" \
+                -H "Cache-Control: no-store" \
+                "$WARM_DB_URL")
