@@ -36,6 +36,8 @@ function formatChatTime(iso: string) {
     }
 }
 
+
+
 export default function Sidebar({
     isSmall,
     isSidebarCollapsed,
@@ -53,6 +55,9 @@ export default function Sidebar({
     onNewChat,
     onOpenChat,
     onRequestDeleteChat,
+
+    sidebarLoadingSince,
+    onRetryChats,
 
     userLabel,
     isAuthed,
@@ -75,10 +80,37 @@ export default function Sidebar({
     onOpenChat: (id: string) => void;
     onRequestDeleteChat: (id: string) => void;
 
+    sidebarLoadingSince: number | null;
+    onRetryChats: () => void;
+
     userLabel: string;
     isAuthed: boolean;
     onOpenAuth: () => void;
 }) {
+
+    const [loadingTick, setLoadingTick] = React.useState(0);
+    const [nowMs, setNowMs] = React.useState(() => Date.now());
+
+    const showWarmupUI = isSidebarLoading && chats.length === 0;
+
+    React.useEffect(() => {
+        if (!showWarmupUI) return;
+
+        const t1 = window.setInterval(() => setLoadingTick((v) => v + 1), 2000);
+        const t2 = window.setInterval(() => setNowMs(Date.now()), 250);
+
+        return () => {
+            window.clearInterval(t1);
+            window.clearInterval(t2);
+        };
+    }, [showWarmupUI]);
+
+    const elapsedMs =
+        showWarmupUI && sidebarLoadingSince ? Math.max(0, nowMs - sidebarLoadingSince) : 0;
+
+    const loadingLabel = loadingTick % 2 === 0 ? "Loading chats…" : "Waking up server…";
+    const showRetry = showWarmupUI && elapsedMs >= 15000;
+
     return (
         <aside
             className={[
@@ -174,8 +206,25 @@ export default function Sidebar({
 
                     {/* Chats list */}
                     <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 mt-4">
-                        {isSidebarLoading && chats.length === 0 ? (
+                        {/* {isSidebarLoading && chats.length === 0 ? (
                             <div className="text-xs text-gray-400 px-2 py-2">Loading chats…</div>
+                        ) : filteredChats.length === 0 ? (
+                            <div className="text-xs text-gray-400 px-2 py-2">No saved chats yet.</div>
+                        ) : ( */}
+                        {showWarmupUI ? (
+                            <div className="px-2 py-2">
+                                <div className="text-xs text-gray-400">{loadingLabel}</div>
+
+                                {showRetry ? (
+                                    <button
+                                        type="button"
+                                        onClick={onRetryChats}
+                                        className="mt-2 rounded-lg border border-white/10 bg-white/10 hover:bg-white/15 transition px-3 py-2 text-xs text-gray-100"
+                                    >
+                                        Retry
+                                    </button>
+                                ) : null}
+                            </div>
                         ) : filteredChats.length === 0 ? (
                             <div className="text-xs text-gray-400 px-2 py-2">No saved chats yet.</div>
                         ) : (

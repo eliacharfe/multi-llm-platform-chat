@@ -35,6 +35,7 @@ export default function Page() {
   const [userLabel, setUserLabel] = useState("Sign in");
 
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [sidebarLoadingSince, setSidebarLoadingSince] = useState<number | null>(null);
 
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [input, setInput] = useState("");
@@ -80,6 +81,11 @@ export default function Page() {
 
   useEffect(() => {
     if (!authReady) return;
+    fetch(`${apiUrl}/health`, { cache: "no-store" }).catch(() => { });
+  }, [authReady, apiUrl]);
+
+  useEffect(() => {
+    if (!authReady) return;
 
     const minMs = 3000;
     const t = window.setTimeout(() => setShowSplash(false), minMs);
@@ -117,12 +123,15 @@ export default function Page() {
     }
 
     setIsSidebarLoading(true);
+    setSidebarLoadingSince((prev) => prev ?? Date.now());
+
     try {
       const token = await u.getIdToken();
 
       const res = await fetch(`${apiUrl}/v1/chats`, {
         method: "GET",
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
 
       if (res.status === 401) {
@@ -140,6 +149,7 @@ export default function Page() {
       setChats(data?.chats || []);
     } finally {
       setIsSidebarLoading(false);
+      setSidebarLoadingSince(null);
     }
   }
 
@@ -674,6 +684,8 @@ export default function Page() {
           filteredChats={filteredChats}
           activeChatId={activeChatId}
           isSidebarLoading={isSidebarLoading}
+          sidebarLoadingSince={sidebarLoadingSince}
+          onRetryChats={() => refreshChats().catch(() => { })}
           chatSearch={chatSearch}
           setChatSearch={setChatSearch}
           onNewChat={newDraftChat}
