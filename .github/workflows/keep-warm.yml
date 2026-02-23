@@ -2,24 +2,38 @@ name: Keep Render Warm
 
 on:
   schedule:
-    - cron: "*/2 * * * *" # every 2 minutes (stronger than 5)
-  workflow_dispatch: {}
+    - cron: "*/3 * * * *"   # every 3 minutes (UTC)
+  workflow_dispatch: {}      # allows manual run from GitHub UI
 
 jobs:
   ping:
     runs-on: ubuntu-latest
-    steps:
-      - name: Show time (UTC)
-        run: date -u
+    timeout-minutes: 2
 
-      - name: Ping backend health
+    steps:
+      - name: Ping backend warm-db
         env:
           HEALTH_URL: ${{ secrets.HEALTH_URL }}
         run: |
           echo "Pinging: $HEALTH_URL"
-          curl -sS -L --max-time 15 \
-            --retry 3 --retry-delay 3 --retry-connrefused \
+
+          # curl:
+          # - retries 3 times
+          # - max 15s per attempt
+          # - prints status + time
+          # - fails if not 200
+          curl -sS -L \
+            --max-time 15 \
+            --retry 3 \
+            --retry-delay 3 \
+            --retry-connrefused \
             -o /dev/null \
             -w "status=%{http_code} time=%{time_total}s\n" \
             -H "Cache-Control: no-store" \
-            "$HEALTH_URL"
+            "$HEALTH_URL" | tee /tmp/curl_out.txt
+
+          # enforce status 200
+          if ! grep -q "status=200" /tmp/curl_out.txt; then
+            echo "Health check failed"
+            exit 1
+          fi

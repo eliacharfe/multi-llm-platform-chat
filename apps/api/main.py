@@ -20,6 +20,8 @@ from datetime import datetime
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import select, desc, delete
 from sqlalchemy.orm import selectinload
+from db import SessionLocal
+from sqlalchemy import text
 from fastapi import UploadFile, File, Form, Header, HTTPException
 
 import firebase_admin
@@ -53,6 +55,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+from db import SessionLocal  # adjust if your sessionmaker is named differently
+
+@app.get("/v1/warm-db")
+async def warm_db():
+    try:
+        async with SessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        return {"ok": True, "warmed": "db"}
+    except Exception as e:
+        return {"ok": False, "warmed": "db", "error": str(e)}
 
 _sa = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
 if not _sa:
