@@ -264,17 +264,11 @@ export default function MessageList({
                                             <ActionButton
                                                 label="Retry"
                                                 title="Try again"
-                                                icon="↻"
                                                 onClick={onRetry}
                                             />
                                         </div>
                                     ) : null}
 
-                                    {/* {isAssistant && (m.content?.length ?? 0) > 0 ? (
-                                        <div className={["mt-2 flex", isRTL ? "justify-end" : "justify-start"].join(" ")}>
-                                            <CopyButton text={m.content} />
-                                        </div>
-                                    ) : null} */}
                                 </div>
                             )}
                         </div>

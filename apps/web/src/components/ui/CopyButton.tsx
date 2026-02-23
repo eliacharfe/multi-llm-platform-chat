@@ -53,22 +53,6 @@ export default function CopyButton({
             title={copied ? "Copied!" : title}
             variant={copied ? "success" : "default"}
             label={copied ? "Copied" : "Copy"}
-            icon={
-                <span className="relative w-3 h-3 inline-block">
-                    <span
-                        className={`absolute inset-0 transition-all duration-200 ${copied ? "opacity-0 scale-75" : "opacity-100 scale-100"
-                            }`}
-                    >
-                        ⧉
-                    </span>
-                    <span
-                        className={`absolute inset-0 transition-all duration-200 ${copied ? "opacity-100 scale-100" : "opacity-0 scale-75"
-                            }`}
-                    >
-                        ✓
-                    </span>
-                </span>
-            }
         />
     );
 }
