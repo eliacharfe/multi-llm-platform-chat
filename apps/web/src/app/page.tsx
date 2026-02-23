@@ -1,3 +1,4 @@
+
 // apps/web/src/app/page.tsx
 "use client";
 
@@ -23,7 +24,6 @@ import {
   thinkingText,
   buildSectionedChoices,
 } from "@/lib/models";
-
 
 export default function Page() {
   const DEFAULT_MODEL = "gemini:models/gemini-2.5-flash";
@@ -56,13 +56,22 @@ export default function Page() {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
 
   const isSmallRef = useRef(false);
+  const [isSmall, setIsSmall] = useState(false);
+
+  const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
+  const canSend = useMemo(
+    () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
+    [input, attachedFiles.length, isStreaming]
+  );
 
   // Confirm dialog
   const [confirmOpen, setConfirmOpen] = useState(false);
   const confirmActionRef = useRef<null | (() => Promise<void> | void)>(null);
   const [confirmTitle, setConfirmTitle] = useState("Confirm");
   const [confirmMessage, setConfirmMessage] = useState("");
-  const [confirmVariant, setConfirmVariant] = useState<"default" | "danger">("default");
+  const [confirmVariant, setConfirmVariant] = useState<"default" | "danger">(
+    "default"
+  );
   const [confirmText, setConfirmText] = useState("OK");
   const [cancelText, setCancelText] = useState("Cancel");
 
@@ -76,7 +85,6 @@ export default function Page() {
     const t = window.setTimeout(() => setShowSplash(false), minMs);
     return () => window.clearTimeout(t);
   }, [authReady]);
-
 
   function openConfirm(opts: {
     title: string;
@@ -93,6 +101,11 @@ export default function Page() {
     setCancelText(opts.cancelText ?? "Cancel");
     confirmActionRef.current = opts.onConfirm;
     setConfirmOpen(true);
+  }
+
+  function closeConfirm() {
+    setConfirmOpen(false);
+    confirmActionRef.current = null;
   }
 
   async function refreshChats(user?: User | null) {
@@ -211,9 +224,45 @@ export default function Page() {
     return created.chat_id;
   }
 
+  async function api<T>(path: string, init?: RequestInit): Promise<T> {
+    const token = await auth.currentUser?.getIdToken();
+
+    const headers: Record<string, string> = {
+      ...(init?.headers as any),
+    };
+
+    const isFormData =
+      typeof FormData !== "undefined" && init?.body instanceof FormData;
+    if (!isFormData) headers["Content-Type"] = "application/json";
+
+    if (token) {
+      headers["Authorization"] = `Bearer ${token}`;
+    }
+
+    const res = await fetch(`${apiUrl}${path}`, {
+      ...init,
+      headers,
+    });
+
+    if (res.status === 401) {
+      setAuthOpen(true);
+      return undefined as T;
+    }
+
+    if (!res.ok) {
+      const txt = await res.text().catch(() => "");
+      throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
+    }
+
+    if (res.status === 204) return undefined as T;
+
+    const text = await res.text();
+    if (!text) return undefined as T;
+
+    return JSON.parse(text) as T;
+  }
 
   async function send() {
-
     if (!auth.currentUser) {
       setAuthOpen(true);
       return;
@@ -264,9 +313,7 @@ export default function Page() {
 
       const res = await fetch(`${apiUrl}/v1/chat/stream_with_files`, {
         method: "POST",
-        headers: token
-          ? { Authorization: `Bearer ${token}` }
-          : undefined,
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
         signal: ac.signal,
         body: fd,
       });
@@ -341,7 +388,11 @@ export default function Page() {
           if (obj.error) {
             const short = String(obj.error_short ?? obj.error ?? "Unknown error");
 
-            if (DEBUG_SSE) console.error("[sse] error received:", { error: obj.error, error_short: obj.error_short });
+            if (DEBUG_SSE)
+              console.error("[sse] error received:", {
+                error: obj.error,
+                error_short: obj.error_short,
+              });
 
             setMessages((prev) => {
               const copy = [...prev];
@@ -353,7 +404,10 @@ export default function Page() {
                 return copy;
               }
               if (last?.role === "assistant") {
-                copy[copy.length - 1] = { ...last, content: `${last.content}\n\n${errText}` };
+                copy[copy.length - 1] = {
+                  ...last,
+                  content: `${last.content}\n\n${errText}`,
+                };
                 return copy;
               }
               return [...copy, { role: "assistant", content: errText }];
@@ -400,18 +454,11 @@ export default function Page() {
       buffer += decoder.decode();
       processBuffer();
 
-      if (!finished) {
-        finished = true;
-      }
+      if (!finished) finished = true;
 
       setAttachedFiles([]);
       scrollToBottom(true);
       refreshChats().catch(() => { });
-
-      if (DEBUG_SSE) {
-        const last = messages[messages.length - 1];
-        console.log("[send] finished=", finished, "last assistant length=", last?.content?.length);
-      }
     } catch (e: any) {
       if (e?.name !== "AbortError") {
         setMessages((prev) => {
@@ -426,10 +473,7 @@ export default function Page() {
             return copy;
           }
 
-          return [
-            ...copy,
-            { role: "assistant", content: `⚠️ ${String(e?.message || e)}` },
-          ];
+          return [...copy, { role: "assistant", content: `⚠️ ${String(e?.message || e)}` }];
         });
       }
     } finally {
@@ -467,27 +511,12 @@ export default function Page() {
   }
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 900px)");
-    const apply = () => {
-      isSmallRef.current = mq.matches;
-      setIsSidebarCollapsed(mq.matches);
-    };
-
-    apply();
-    mq.addEventListener?.("change", apply) ?? mq.addListener(apply);
-
-    return () => {
-      mq.removeEventListener?.("change", apply) ?? mq.removeListener(apply);
-    };
-  }, []);
-
-  const [isSmall, setIsSmall] = useState(false);
-
-  useEffect(() => {
     const mq = window.matchMedia("(max-width: 750px)");
     const apply = () => {
-      setIsSmall(mq.matches);
-      setIsSidebarCollapsed(mq.matches);
+      const small = mq.matches;
+      isSmallRef.current = small;
+      setIsSmall(small);
+      setIsSidebarCollapsed(small);
     };
 
     apply();
@@ -499,7 +528,6 @@ export default function Page() {
       else mq.removeListener(apply);
     };
   }, []);
-
 
   function addFiles(files: File[]) {
     if (!files.length) return;
@@ -565,7 +593,6 @@ export default function Page() {
     window.addEventListener("dragleave", onDragLeave);
     window.addEventListener("drop", onDrop);
 
-    // extra safety
     window.addEventListener("dragover", preventWindowDrop);
     window.addEventListener("drop", preventWindowDrop);
 
@@ -580,66 +607,13 @@ export default function Page() {
     };
   }, [isStreaming]);
 
-
-
-  function closeConfirm() {
-    setConfirmOpen(false);
-    confirmActionRef.current = null;
-  }
-
-  const modelChoices = useMemo(() => buildSectionedChoices(MODEL_OPTIONS), []);
-  const canSend = useMemo(
-    () => (input.trim().length > 0 || attachedFiles.length > 0) && !isStreaming,
-    [input, attachedFiles.length, isStreaming]
-  );
-
   const filteredChats = useMemo(() => {
     const q = chatSearch.trim().toLowerCase();
     if (!q) return chats;
     return chats.filter((c) => (c.title || "").toLowerCase().includes(q));
   }, [chats, chatSearch]);
 
-
-
-  async function api<T>(path: string, init?: RequestInit): Promise<T> {
-    const token = await auth.currentUser?.getIdToken();
-
-    const headers: Record<string, string> = {
-      ...(init?.headers as any),
-    };
-
-    const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
-    if (!isFormData) headers["Content-Type"] = "application/json";
-
-    if (token) {
-      headers["Authorization"] = `Bearer ${token}`;
-    }
-
-    const res = await fetch(`${apiUrl}${path}`, {
-      ...init,
-      headers,
-    });
-
-    if (res.status === 401) {
-      setAuthOpen(true);
-      return undefined as T;
-    }
-
-    if (!res.ok) {
-      const txt = await res.text().catch(() => "");
-      throw new Error(`HTTP ${res.status}${txt ? ` — ${txt}` : ""}`);
-    }
-
-    if (res.status === 204) return undefined as T;
-
-    const text = await res.text();
-    if (!text) return undefined as T;
-
-    return JSON.parse(text) as T;
-  }
-
   return (
-    // <main className="h-dvh w-screen bg-[#252525] text-gray-200 overflow-hidden">
     <main className="fixed inset-0 h-dvh w-screen bg-[#252525] text-gray-200 overflow-hidden flex flex-col">
       <LogoSplash
         show={showSplash}
@@ -674,18 +648,14 @@ export default function Page() {
         href="/"
         className={`fixed left-3 top-2 z-50 transition-all duration-300 hover:scale-105 active:scale-95 ${isSidebarCollapsed
           ? "opacity-0 scale-90 pointer-events-none"
-          : "opacity-100 scale-100"}`}
+          : "opacity-100 scale-100"
+          }`}
         title="Multi LLM Chat"
       >
-        <img
-          src="/multi-llm-logo.png"
-          alt="Multi LLM Chat"
-          className="h-7 w-7"
-        />
+        <img src="/multi-llm-logo.png" alt="Multi LLM Chat" className="h-7 w-7" />
       </a>
 
       <div className="flex h-full">
-
         {/* Mobile backdrop */}
         {isSmall && !isSidebarCollapsed ? (
           <div
@@ -693,6 +663,7 @@ export default function Page() {
             onClick={() => setIsSidebarCollapsed(true)}
           />
         ) : null}
+
         {/* LEFT SIDEBAR */}
         <Sidebar
           isSmall={isSmall}
@@ -732,7 +703,6 @@ export default function Page() {
           onOpenAuth={() => setAuthOpen(true)}
         />
 
-
         {/* MAIN CHAT AREA */}
         <section className="flex-1 relative min-w-0">
           <div className="h-full flex flex-col">
@@ -755,7 +725,7 @@ export default function Page() {
               </div>
             </div>
 
-            {/* COMPOSER (bottom bar) — FIXED OUTSIDE SCROLL */}
+            {/* COMPOSER */}
             <Composer
               input={input}
               setInput={setInput}
@@ -776,11 +746,9 @@ export default function Page() {
               isSidebarCollapsed={isSidebarCollapsed}
               onToggleSidebar={() => setIsSidebarCollapsed((v) => !v)}
             />
-
           </div>
-        </section >
-      </div >
-
+        </section>
+      </div>
 
       <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
 
@@ -798,6 +766,6 @@ export default function Page() {
           await fn();
         }}
       />
-    </main >
+    </main>
   );
 }
