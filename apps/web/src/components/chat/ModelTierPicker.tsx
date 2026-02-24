@@ -115,7 +115,7 @@ export default function ModelTierPicker({
                         "absolute left-0 top-[calc(100%+10px)] z-50",
                         "w-[280px]",
                         "rounded-2xl border border-white/10",
-                        "bg-[#2b2b2b]/80 backdrop-blur-xl",
+                        "bg-[#2b2b2b] backdrop-blur-xl",
                         "shadow-[0_18px_60px_rgba(0,0,0,0.45)]",
                         "p-2",
                     ].join(" ")}
@@ -139,22 +139,36 @@ export default function ModelTierPicker({
                                     setOpen(false);
                                 }}
                                 className={[
-                                    "w-full text-left",
+                                    "group w-full text-left",
                                     "rounded-xl",
                                     "px-3 py-2",
-                                    "hover:bg-white/0.06 transition",
-                                    active ? "bg-white/0.06" : "",
+                                    "transition-all duration-150 ease-out",
+                                    "hover:bg-white/10 hover:shadow-[0_0_0_1px_rgba(255,255,255,0.08)]",
+                                    "hover:-translate-y-px",
+                                    active ? "bg-white/10" : "",
                                 ].join(" ")}
                             >
                                 <div className="flex items-start justify-between gap-3">
                                     <div>
-                                        <div className="text-sm text-gray-100">{x.title}</div>
-                                        <div className="text-xs text-gray-400 mt-0.5">{x.desc}</div>
+                                        <div className="text-sm text-gray-100 group-hover:text-white transition-colors">
+                                            {x.title}
+                                        </div>
+
+                                        <div className="text-xs text-gray-400 mt-0.5 group-hover:text-gray-300 transition-colors">
+                                            {x.desc}
+                                        </div>
                                     </div>
 
                                     <div className="pt-0.5">
                                         {active ? (
-                                            <span className="text-gray-200">✓</span>
+                                            <span
+                                                className={[
+                                                    "transition-opacity duration-150",
+                                                    active ? "opacity-100 text-gray-200" : "opacity-0 group-hover:opacity-40",
+                                                ].join(" ")}
+                                            >
+                                                ✓
+                                            </span>
                                         ) : (
                                             <span className="opacity-0">✓</span>
                                         )}
