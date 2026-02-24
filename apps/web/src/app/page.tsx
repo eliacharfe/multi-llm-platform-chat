@@ -25,11 +25,22 @@ import {
   buildSectionedChoices,
 } from "@/lib/models";
 
+import ModelTierPicker from "@/components/chat/ModelTierPicker";
+import {
+  getProvider,
+  inferTierFromModel,
+  TIER_MODEL_BY_PROVIDER,
+  type ModeTier,
+} from "@/lib/models";
 
 
 
 export default function Page() {
   const DEFAULT_MODEL = "gemini:models/gemini-2.5-flash";
+
+  const [autoModelByProvider, setAutoModelByProvider] = useState<Record<string, string>>(() => ({
+    [getProvider(DEFAULT_MODEL)]: DEFAULT_MODEL,
+  }));
 
   const [showSplash, setShowSplash] = useState(true);
   const [authReady, setAuthReady] = useState(false);
@@ -111,6 +122,44 @@ export default function Page() {
     const t = window.setTimeout(() => setShowSplash(false), minMs);
     return () => window.clearTimeout(t);
   }, [authReady]);
+
+  function setModelAsAuto(nextModel: string) {
+    const p = getProvider(nextModel);
+    setAutoModelByProvider((prev) => ({ ...prev, [p]: nextModel }));
+    setModel(nextModel);
+  }
+
+  function switchTier(nextTier: ModeTier) {
+    const provider = getProvider(model);
+    const map = TIER_MODEL_BY_PROVIDER[provider];
+    if (!map) return;
+
+    if (provider === "openai") {
+      if (nextTier === "auto") {
+        setModel("openai:gpt-5-mini");
+        return;
+      }
+      if (nextTier === "instant") {
+        setModel(map.instant);
+        return;
+      }
+      if (nextTier === "thinking") {
+        setModel(map.thinking);
+        return;
+      }
+    }
+
+    if (nextTier === "auto") {
+      const back = autoModelByProvider[provider] || model;
+      setModel(back);
+      return;
+    }
+
+    const nextModel =
+      nextTier === "instant" ? map.instant : map.thinking;
+
+    setModel(nextModel);
+  }
 
   function openConfirm(opts: {
     title: string;
@@ -226,7 +275,8 @@ export default function Page() {
     const chat = detail?.chat ?? detail;
 
     setMessages(Array.isArray(chat?.messages) ? chat.messages : []);
-    if (chat?.model) setModel(chat.model);
+    // if (chat?.model) setModel(chat.model);
+    if (chat?.model) setModelAsAuto(chat.model);
 
     autoScrollEnabledRef.current = true;
     scrollToBottom(true);
@@ -501,6 +551,7 @@ export default function Page() {
       fd.append("temperature", String(getTemperature(model)));
       if (isRetry) {
         fd.append("retry", "true");
+        // fd.append("messages", JSON.stringify(base));
       } else {
         fd.append("message", userText);
         fd.append("messages", JSON.stringify(base));
@@ -657,11 +708,34 @@ export default function Page() {
 
         {/* MAIN CHAT AREA */}
         <section className="flex-1 relative min-w-0">
+
           <div className="h-full flex flex-col">
+            {/* TOP BAR */}
+            <div
+              className={[
+                "sticky top-0 z-30",
+                "h-14",
+                "border-b border-white/10",
+                "bg-[#252525]/70 backdrop-blur-xl",
+                "flex items-center",
+                "px-3 sm:px-6",
+              ].join(" ")}
+            >
+              <div className="flex items-center gap-3">
+                {/* Spacer for mobile hamburger so it never collides */}
+                <div className="w-12 sm:hidden" />
+
+                <ModelTierPicker
+                  model={model}
+                  tier={inferTierFromModel(model)}
+                  onChangeTier={switchTier}
+                />
+              </div>
+            </div>
             {/* chat scroller */}
             <div
               ref={scrollRef}
-              className="flex-1 overflow-y-auto px-3 sm:px-6 pt-6 sm:pt-8 pb-[calc(env(safe-area-inset-bottom)-15px)]"
+              className="flex-1 overflow-y-auto px-3 sm:px-6 pt-3 sm:pt-8 pb-[calc(env(safe-area-inset-bottom)-15px)]"
               onScroll={() => {
                 autoScrollEnabledRef.current = isNearBottom(140);
               }}
@@ -691,7 +765,8 @@ export default function Page() {
               modelChoices={modelChoices}
               onChangeModel={(v) => {
                 if (v.startsWith("__header__:")) return;
-                setModel(v);
+                // setModel(v);
+                setModelAsAuto(v);
               }}
               canSend={canSend}
               isStreaming={isStreaming}

@@ -119,3 +119,54 @@ export function buildSectionedChoices(models: readonly string[]): SelectOpt[] {
 
     return out;
 }
+
+
+export type ModeTier = "auto" | "instant" | "thinking";
+
+export function getProvider(providerModel: string): string {
+    return (providerModel || "").split(":", 1)[0] || "";
+}
+
+export const TIER_MODEL_BY_PROVIDER: Record<
+    string,
+    { instant: string; thinking: string }
+> = {
+    //  Gemini 
+    gemini: {
+        instant: "gemini:models/gemini-2.5-flash-lite",
+        thinking: "gemini:models/gemini-2.5-flash",
+    },
+
+    // OpenAI
+    openai: {
+        instant: "openai:gpt-5-nano",
+        thinking: "openai:gpt-5",
+    },
+
+    // Groq
+    groq: {
+        instant: "groq:llama-3.1-8b-instant",
+        thinking: "groq:llama-3.3-70b-versatile",
+    },
+
+    // Anthropic
+    anthropic: {
+        instant: "anthropic:claude-haiku-4-5",
+        thinking: "anthropic:claude-opus-4-6",
+    },
+
+    // OpenRouter 
+    openrouter: {
+        instant: "openrouter:openai/gpt-4o-mini",
+        thinking: "openrouter:mistralai/mistral-large-2512",
+    },
+};
+
+export function inferTierFromModel(model: string): ModeTier {
+    const p = getProvider(model);
+    const m = TIER_MODEL_BY_PROVIDER[p];
+    if (!m) return "auto";
+    if (model === m.instant) return "instant";
+    if (model === m.thinking) return "thinking";
+    return "auto";
+}

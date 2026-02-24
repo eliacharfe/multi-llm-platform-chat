@@ -966,13 +966,26 @@ You are a senior software engineer and technical writer.
 
 # --- Retry instruction  ---
 RETRY_SYSTEM = "\n".join([
-    "User requested a retry.",
-    "Provide a new answer to the last user message using a different approach than before.",
-    "Use a different example than the previous answer.",
-    "Be correct, clear, and helpful.",
-    "Do not mention that this is a retry unless asked.",
+  "User requested a retry.",
+  "Write a new answer to the last user message.",
+  "You MUST NOT repeat the same wording, sentences, or examples from the previous answer.",
+  "Change the structure: if the previous answer used bullets, use short paragraphs; if it used paragraphs, use bullets.",
+  "Be correct and helpful.",
+  "Do not mention that this is a retry unless asked.",
 ])
 
+def _inject_retry_context(history: list[ChatMsg], prev_answer: str) -> list[ChatMsg]:
+    if not prev_answer.strip():
+        return history
+    ctx = "\n".join([
+        "Previous assistant answer (DO NOT repeat wording/examples):",
+        prev_answer.strip(),
+    ])
+    # Put it as system right before the last user, same as your retry system injection.
+    last_user_idx = next((i for i in range(len(history)-1, -1, -1) if history[i].role == "user"), None)
+    if last_user_idx is None:
+        return [ChatMsg(role="system", content=ctx)] + history
+    return history[:last_user_idx] + [ChatMsg(role="system", content=ctx)] + history[last_user_idx:]
 
 def _inject_retry_system_before_last_user(history: list["ChatMsg"]) -> list["ChatMsg"]:
     """
@@ -1177,24 +1190,19 @@ async def chat_stream_with_files(
                     yield sse({"done": True})
                     return
 
-                raw_history = [
-                    ChatMsg(role=m.role, content=m.content)
-                    for m in chat.messages
-                    if not (m.role == "assistant" and not (m.content or "").strip())
-                ]
 
-                history = raw_history
-
-                if retry and previous_assistant_content:
-                    last_user_idx = next(
-                        (i for i in range(len(history) - 1, -1, -1) if history[i].role == "user"),
-                        None,
-                    )
-                    if last_user_idx is not None:
-                        history.insert(
-                            last_user_idx,
-                            ChatMsg(role="assistant", content=previous_assistant_content),
-                        )
+                if not retry and req_msgs:
+                    history = [
+                        ChatMsg(role=m.role, content=m.content)
+                        for m in req_msgs
+                        if not (m.role == "assistant" and not (m.content or "").strip())
+                    ]
+                else:
+                    history = [
+                        ChatMsg(role=m.role, content=m.content)
+                        for m in chat.messages
+                        if not (m.role == "assistant" and not (m.content or "").strip())
+                    ]
 
                 replaced = False
                 for i in range(len(history) - 1, -1, -1):
@@ -1205,6 +1213,9 @@ async def chat_stream_with_files(
                 if not replaced:
                     history.append(ChatMsg(role="user", content=user_payload))
 
+                if retry and previous_assistant_content:
+                    history = _inject_retry_context(history, previous_assistant_content)
+
                 if retry:
                     history = _inject_retry_system_before_last_user(history)
 
@@ -1212,6 +1223,13 @@ async def chat_stream_with_files(
                     print("[RETRY DEBUG] history sent to LLM:")
                     for i, m in enumerate(history):
                         print(f"  [{i}] role={m.role} len={len(m.content)}ch preview={m.content[:80]!r}")
+
+                print(f"[HISTORY DEBUG] provider={provider} retry={retry} msgs={len(history)}")
+                tail = history[-6:]
+                start = len(history) - len(tail)
+                for i, m in enumerate(tail):
+                    idx = start + i
+                    print(f"  [{idx}] role={m.role} len={len(m.content)} preview={m.content[:120]!r}")
 
                 llm_req = ChatRequest(
                     chat_id=chat_id,
