@@ -16,7 +16,7 @@ import type { ChatListItem } from "@/components/chat/Sidebar";
 import MessageList from "@/components/chat/MessageList";
 import type { Msg } from "@/components/chat/MessageList";
 
-import Composer from "@/components/chat/Composer";
+import Composer, { type ComposerHandle } from "@/components/chat/Composer";
 
 import {
   MODEL_OPTIONS,
@@ -81,6 +81,23 @@ export default function Page() {
 
   const [isDraggingFiles, setIsDraggingFiles] = useState(false);
   const dragDepthRef = useRef(0);
+
+  const composerRef = useRef<ComposerHandle | null>(null);
+  const prevStreamingRef = useRef(false);
+
+  useEffect(() => {
+    const was = prevStreamingRef.current;
+    const now = isStreaming;
+
+    // streaming just ended
+    if (was && !now) {
+      // wait a tick so textarea is enabled again
+      requestAnimationFrame(() => composerRef.current?.focus());
+    }
+
+    prevStreamingRef.current = now;
+  }, [isStreaming]);
+
 
   useEffect(() => {
     if (!authReady) return;
@@ -664,6 +681,7 @@ export default function Page() {
 
             {/* COMPOSER */}
             <Composer
+              ref={composerRef}
               input={input}
               setInput={setInput}
               attachedFiles={attachedFiles}
