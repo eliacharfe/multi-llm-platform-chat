@@ -101,7 +101,7 @@ export default function MessageList({
                         </div>
 
                         <div className="relative">
-                            <div className="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight lg:pt-20 sm:pt-1 md:pt-10">
+                            <div className="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight lg:pt-20 sm:pt-1 md:pt-10 xl:pt-30 2xl:pt-40">
                                 Welcome back!
                             </div>
 
