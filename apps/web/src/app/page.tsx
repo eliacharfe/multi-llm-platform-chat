@@ -10,11 +10,13 @@ import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import AuthDialog from "@/components/ui/AuthDialog";
 import LogoSplash from "@/components/ui/LogoSplash";
 
+import IconGhostButton from "@/components/ui/IconGhostButton";
 import Sidebar from "@/components/chat/Sidebar";
 import type { ChatListItem } from "@/components/chat/Sidebar";
 
 import MessageList from "@/components/chat/MessageList";
 import type { Msg } from "@/components/chat/MessageList";
+
 
 import Composer, { type ComposerHandle } from "@/components/chat/Composer";
 
@@ -408,21 +410,23 @@ export default function Page() {
   }
 
   useEffect(() => {
-    const mq = window.matchMedia("(max-width: 750px)");
+    const mq = window.matchMedia("(min-width: 640px)");
+
     const apply = () => {
-      const small = mq.matches;
+      const atLeastSm = mq.matches;
+      const small = !atLeastSm;
+
       isSmallRef.current = small;
       setIsSmall(small);
-      setIsSidebarCollapsed(small);
+
+      if (small) setIsSidebarCollapsed(true);
     };
 
     apply();
-    if (mq.addEventListener) mq.addEventListener("change", apply);
-    else mq.addListener(apply);
+    mq.addEventListener?.("change", apply) ?? mq.addListener(apply);
 
     return () => {
-      if (mq.removeEventListener) mq.removeEventListener("change", apply);
-      else mq.removeListener(apply);
+      mq.removeEventListener?.("change", apply) ?? mq.removeListener(apply);
     };
   }, []);
 
@@ -633,16 +637,32 @@ export default function Page() {
       ) : null}
 
       {isSmall ? (
-        <button
-          type="button"
-          onClick={() => setIsSidebarCollapsed((v) => !v)}
-          className="fixed left-3 top-3 z-60 h-10 w-10 rounded-xl border border-white/10 bg-black/30 backdrop-blur flex items-center justify-center text-gray-200 hover:bg-black/40 transition"
-          aria-label={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
-          title={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
-        >
-          {isSidebarCollapsed ? "☰" : "✕"}
-        </button>
+        <div className="fixed left-2 top-2 z-60">
+          <IconGhostButton
+            label={isSidebarCollapsed ? "Open sidebar" : "Close sidebar"}
+            withTooltip={false}
+            size="md"
+            onClick={() => setIsSidebarCollapsed((v) => !v)}
+            disabled={isStreaming}
+            className="bg-transparent! border-none! hover:bg-white/5!"
+          >
+            <svg
+              viewBox="0 0 24 24"
+              className={`h-5 w-5 transition-transform duration-200 ${!isSidebarCollapsed ? "rotate-180" : ""
+                }`}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="4" y="5" width="16" height="14" rx="2" />
+              <path d="M12 5v14" />
+            </svg>
+          </IconGhostButton>
+        </div>
       ) : null}
+
 
       {/* ICON */}
       <a
@@ -723,8 +743,7 @@ export default function Page() {
             >
               <div className="flex items-center gap-3">
                 {/* Spacer for mobile hamburger so it never collides */}
-                <div className="w-12 sm:hidden" />
-
+                <div className="w-8 sm:hidden" />
                 <ModelTierPicker
                   model={model}
                   tier={inferTierFromModel(model)}

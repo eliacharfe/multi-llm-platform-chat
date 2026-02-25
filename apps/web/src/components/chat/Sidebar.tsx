@@ -112,11 +112,11 @@ export default function Sidebar({
     const showRetry = showWarmupUI && elapsedMs >= 15000;
 
     return (
+
         <aside
             className={[
                 "h-full min-h-0 border-r border-white/10 bg-[#2b2b2b] flex flex-col overflow-hidden",
                 "transition-all duration-200 ease-out",
-
                 isSmall
                     ? [
                         "fixed left-0 top-0 z-50",
@@ -130,7 +130,40 @@ export default function Sidebar({
             ].join(" ")}
         >
             {/* Toggle button */}
-            <div className="relative pt-20 px-2">
+            {/* Toggle button (desktop only) */}
+            {!isSmall && (
+                <div className="relative pt-20 px-2">
+                    <div
+                        className={[
+                            "absolute top-2 z-10",
+                            isSidebarCollapsed ? "left-1/2 -translate-x-1/2" : "right-2",
+                        ].join(" ")}
+                    >
+                        <IconGhostButton
+                            label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                            withTooltip={false}
+                            size="md"
+                            onClick={() => setIsSidebarCollapsed((v) => !v)}
+                            disabled={isStreaming}
+                        >
+                            <svg
+                                viewBox="0 0 24 24"
+                                className={`h-5 w-5 transition-transform duration-200 ${isSidebarCollapsed ? "rotate-180" : ""
+                                    }`}
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <rect x="4" y="5" width="16" height="14" rx="2" />
+                                <path d="M12 5v14" />
+                            </svg>
+                        </IconGhostButton>
+                    </div>
+                </div>
+            )}
+            {/* <div className="relative pt-20 px-2">
                 <div
                     className={[
                         "absolute top-2 z-10",
@@ -160,11 +193,17 @@ export default function Sidebar({
                         </svg>
                     </IconGhostButton>
                 </div>
-            </div>
+            </div> */}
 
             {/* Sidebar content */}
             {!isSidebarCollapsed && (
-                <div className="flex-1 min-h-0 px-4 pb-4 pt-0 flex flex-col">
+                // <div className="flex-1 min-h-0 px-4 pb-4 pt-0 flex flex-col">
+                <div
+                    className={[
+                        "flex-1 min-h-0 px-4 pb-4 flex flex-col",
+                        isSmall ? "pt-[calc(env(safe-area-inset-top)+56px)]" : "pt-0",
+                    ].join(" ")}
+                >
                     {/* Top actions */}
                     <div className="flex flex-col gap-3 shrink-0">
                         <button
@@ -206,11 +245,6 @@ export default function Sidebar({
 
                     {/* Chats list */}
                     <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 mt-4">
-                        {/* {isSidebarLoading && chats.length === 0 ? (
-                            <div className="text-xs text-gray-400 px-2 py-2">Loading chats…</div>
-                        ) : filteredChats.length === 0 ? (
-                            <div className="text-xs text-gray-400 px-2 py-2">No saved chats yet.</div>
-                        ) : ( */}
                         {showWarmupUI ? (
                             <div className="px-2 py-2">
                                 <div className="text-xs text-gray-400">{loadingLabel}</div>
@@ -299,7 +333,8 @@ export default function Sidebar({
                         </button>
                     </div>
                 </div>
-            )}
-        </aside>
+            )
+            }
+        </aside >
     );
 }
