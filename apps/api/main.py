@@ -50,6 +50,9 @@ app.add_middleware(
         "http://localhost:3001",
         "http://127.0.0.1:3001",
         "https://multi-llm-platform-premium.vercel.app",
+
+        "https://multillm.net",
+       "https://www.multillm.net",
     ],
     allow_credentials=True,
     allow_methods=["*"],
