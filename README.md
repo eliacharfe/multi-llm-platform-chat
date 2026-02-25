@@ -8,10 +8,10 @@ A full-stack **multi-provider AI chat application** that allows you to interact 
 
 ---
 
-## 🌐 Live Demo
+## 🌐 Live 
 
 **Available on:**  
-👉 https://multi-llm-platform-premium.vercel.app/
+👉 [https://multillm.net/](https://multillm.net/)
 
 ---
 
