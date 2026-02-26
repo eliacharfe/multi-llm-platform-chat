@@ -71,7 +71,7 @@ const Composer = forwardRef<ComposerHandle, {
     }));
 
     return (
-        <div className="px-6 pb-4 md:pb-[calc(12px+env(safe-area-inset-bottom))] bg-transparent">
+        <div className="px-3 sm:px-6 pb-[calc(12px+env(safe-area-inset-bottom))] bg-transparent">
             <div className="mx-auto max-w-3xl bg-transparent">
                 <div className="relative p-[3px] rounded-2xl focus-within:bg-linear-to-r focus-within:from-blue-500 focus-within:via-indigo-500 focus-within:to-blue-500 transition-all">
                     <div className="rounded-2xl bg-[#2f2f2f]/70 backdrop-blur-xl border border-white/10 shadow-2xl">
@@ -298,7 +298,7 @@ const Composer = forwardRef<ComposerHandle, {
                 </div>
 
             </div>
-        </div>
+        </div >
     );
 });
 
