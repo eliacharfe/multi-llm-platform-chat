@@ -266,38 +266,10 @@ const Composer = forwardRef<ComposerHandle, {
                         </div>
                     </div>
 
-                    <div className="mt-1 text-center text-xs text-gray-500">
-                        Multi-LLM Platform •{" "}
-                        <a
-                            href="https://www.eliacharfeig.com/"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-gray-400 hover:text-gray-200 underline underline-offset-2"
-                        >
-                            Built by Eliachar Feig
-                        </a>{" "}
-                        •{" "}
-                        <a
-                            href="https://github.com/eliacharfe/multi-llm-platform-chat"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-gray-400 hover:text-gray-200 underline underline-offset-2"
-                        >
-                            GitHub
-                        </a>{" "}
-                        •{" "}
-                        <a
-                            href="https://www.linkedin.com/in/eliachar-feig/"
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-gray-400 hover:text-gray-200 underline underline-offset-2"
-                        >
-                            LinkedIn
-                        </a>
-                    </div>
+
                 </div>
 
-                {/* <div className="mt-1 text-center text-xs text-gray-500">
+                <div className="mt-1 text-center text-xs text-gray-500">
                     Multi-LLM Platform •{" "}
                     <a
                         href="https://www.eliacharfeig.com/"
@@ -325,7 +297,7 @@ const Composer = forwardRef<ComposerHandle, {
                     >
                         LinkedIn
                     </a>
-                </div> */}
+                </div>
 
             </div>
         </div >
