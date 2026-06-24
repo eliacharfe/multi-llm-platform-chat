@@ -103,7 +103,7 @@ MODEL_OPTIONS = [
     "openai:gpt-5-mini",
     "openai:gpt-5",
     "openrouter:deepseek/deepseek-chat",
-    "openrouter:x-ai/grok-4.1-fast",
+    "openrouter:x-ai/grok-4.3",
     "openrouter:openai/gpt-4o-mini",
     "openrouter:mistralai/mistral-large-2512",
     "groq:llama-3.1-8b-instant",
@@ -134,7 +134,7 @@ DEFAULT_TEMPERATURE = 0.7
 
 TEMPERATURE_BY_MODEL: Dict[str, float] = {
     "openrouter:deepseek/deepseek-chat": 0.7,
-    "openrouter:x-ai/grok-4.1-fast": 0.7,
+    "openrouter:x-ai/grok-4.3": 0.7,
     "openrouter:openai/gpt-4o-mini": 0.7,
     "openrouter:mistralai/mistral-large-2512": 0.6,
     "groq:llama-3.1-8b-instant": 0.7,
