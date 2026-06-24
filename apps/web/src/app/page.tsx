@@ -519,6 +519,95 @@ export default function Page() {
       .join("\n\n---\n\n");
   }, [messages]);
 
+  async function editMessage(idx: number, newContent: string) {
+    if (!newContent.trim() || isStreaming) return;
+
+    const truncated = messages.slice(0, idx);
+    setMessages([...truncated, { role: "user", content: newContent }]);
+    setInput("");
+
+    const chatId = await ensureChatId();
+
+    const base = [...truncated, { role: "user" as const, content: newContent }];
+    setMessages([...base, { role: "assistant", content: "" }]);
+
+    autoScrollEnabledRef.current = true;
+    scrollToBottom(true);
+    isStreamingRef.current = true;
+    setIsStreaming(true);
+    setInputTokens(0);
+    setOutputTokens(0);
+
+    const ac = new AbortController();
+    abortRef.current = ac;
+
+    try {
+      const fd = new FormData();
+      fd.append("chat_id", chatId);
+      fd.append("model", model);
+      fd.append("temperature", String(getTemperature(model)));
+      fd.append("message", newContent);
+      fd.append("messages", JSON.stringify(base));
+
+      const token = await auth.currentUser?.getIdToken();
+      const res = await fetch(`${apiUrl}/v1/chat/stream_with_files`, {
+        method: "POST",
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        signal: ac.signal,
+        body: fd,
+      });
+
+      if (res.status === 401) { setAuthOpen(true); return; }
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const inputText = base.map(m => m.content || "").join(" ");
+      setInputTokens(estimateTokens(inputText));
+
+      await streamSSE(
+        res,
+        ac.signal,
+        (t) => {
+          setOutputTokens(prev => prev + estimateTokens(t));
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === "assistant")
+              copy[copy.length - 1] = { ...last, content: (last.content || "") + t };
+            return copy;
+          });
+          scrollToBottom(false);
+        },
+        (errMsg) => {
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: errMsg, isError: true };
+            else copy.push({ role: "assistant", content: errMsg, isError: true });
+            return copy;
+          });
+        },
+      );
+
+      scrollToBottom(true);
+      refreshChats().catch(() => { });
+    } catch (e: any) {
+      if (e?.name !== "AbortError") {
+        setMessages(prev => {
+          const copy = [...prev];
+          const last = copy[copy.length - 1];
+          const errMsg = String(e?.message || e);
+          if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: errMsg, isError: true };
+          else copy.push({ role: "assistant", content: errMsg, isError: true });
+          return copy;
+        });
+      }
+    } finally {
+      setIsStreaming(false);
+      abortRef.current = null;
+      isStreamingRef.current = false;
+    }
+  }
+
   async function submit(isRetry = false) {
     if (!auth.currentUser) { setAuthOpen(true); return; }
     if (!isRetry && !canSend) return;
@@ -781,6 +870,7 @@ export default function Page() {
                   onSuggestion={(text) => setInput(text)}
                   conversationText={conversationText}
                   onRetry={() => submit(true)}
+                  onEditMessage={editMessage}
                 />
               </div>
             </div>

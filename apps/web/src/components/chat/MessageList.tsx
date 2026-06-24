@@ -2,7 +2,7 @@
 // apps/web/src/components/chat/MessageList.tsx
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import * as Prism from "prismjs";
@@ -61,6 +61,7 @@ export default function MessageList({
     onSuggestion,
     conversationText,
     onRetry,
+    onEditMessage,
 }: {
     messages: Msg[];
     isStreaming: boolean;
@@ -69,7 +70,12 @@ export default function MessageList({
     onSuggestion: (text: string) => void;
     conversationText: string;
     onRetry: () => void;
+    onEditMessage: (idx: number, newContent: string) => void;
 }) {
+
+    const [editingIdx, setEditingIdx] = useState<number | null>(null);
+    const [editDraft, setEditDraft] = useState("");
+
     const suggestions = [
         {
             t: "Generate a useful Python script",
@@ -172,22 +178,71 @@ export default function MessageList({
                                     dir={dir}
                                     style={{ unicodeBidi: isRTL ? "plaintext" : "normal" }}
                                 >
-                                    <div
-                                        className={[
-                                            "rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm",
-                                            isRTL ? "text-right" : "text-left",
-                                        ].join(" ")}
-                                    >
-                                        <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
-                                            {m.content}
+                                    {editingIdx === idx ? (
+                                        // EDIT MODE
+                                        <div className="flex flex-col gap-2">
+                                            <textarea
+                                                className="w-full rounded-2xl border border-blue-500/50 bg-[#1e1e1e] px-4 py-3 text-sm text-gray-100 leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+                                                rows={Math.max(2, editDraft.split("\n").length)}
+                                                value={editDraft}
+                                                onChange={e => setEditDraft(e.target.value)}
+                                                onKeyDown={e => {
+                                                    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                                                        onEditMessage(idx, editDraft);
+                                                        setEditingIdx(null);
+                                                    }
+                                                    if (e.key === "Escape") setEditingIdx(null);
+                                                }}
+                                                autoFocus
+                                            />
+                                            <div className="flex gap-2 justify-end">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setEditingIdx(null)}
+                                                    className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-gray-400 hover:bg-white/10 transition"
+                                                >
+                                                    Cancel
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        onEditMessage(idx, editDraft);
+                                                        setEditingIdx(null);
+                                                    }}
+                                                    className="rounded-lg border border-blue-500/30 bg-blue-500/20 px-3 py-1.5 text-xs text-blue-300 hover:bg-blue-500/30 transition"
+                                                >
+                                                    Send ↵
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-
-                                    <div className={["mt-1 flex", isRTL ? "justify-start" : "justify-end"].join(" ")}>
-                                        <CopyButton text={m.content} />
-                                    </div>
+                                    ) : (
+                                        // VIEW MODE — your existing bubble unchanged
+                                        <>
+                                            <div className={[
+                                                "rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm",
+                                                isRTL ? "text-right" : "text-left",
+                                            ].join(" ")}>
+                                                <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
+                                                    {m.content}
+                                                </div>
+                                            </div>
+                                            <div className={["mt-1 flex gap-1", isRTL ? "justify-start" : "justify-end"].join(" ")}>
+                                                <CopyButton text={m.content} />
+                                                <ActionButton
+                                                    label="Edit"
+                                                    title="Edit message"
+                                                    onClick={() => {
+                                                        setEditDraft(m.content);
+                                                        setEditingIdx(idx);
+                                                    }}
+                                                    disabled={isStreaming}
+                                                />
+                                            </div>
+                                        </>
+                                    )}
                                 </div>
                             ) : (
+
                                 <div className="w-full max-w-3xl">
                                     <div
                                         dir={dir}
