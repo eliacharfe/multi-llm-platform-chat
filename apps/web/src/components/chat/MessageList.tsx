@@ -11,7 +11,7 @@ import "@/lib/prism";
 import CopyButton from "@/components/ui/CopyButton";
 import ActionButton from "@/components/ui/ActionButton";
 
-export type Msg = { role: "user" | "assistant" | "system"; content: string; isError?: boolean };
+export type Msg = { role: "user" | "assistant" | "system"; content: string; isError?: boolean; modelSwitch?: string };
 
 function Spinner() {
     return (
@@ -139,11 +139,25 @@ export default function MessageList({
         );
     }
 
+
+
     return (
         <div className="space-y-5">
             {messages
-                .filter((m) => m.role !== "system")
+                .filter((m) => m.role !== "system" || m.modelSwitch)
                 .map((m, idx) => {
+                    if (m.modelSwitch) {
+                        return (
+                            <div key={idx} className="flex items-center gap-3 py-1">
+                                <div className="flex-1 h-px bg-white/10" />
+                                <span className="text-xs text-gray-500 whitespace-nowrap">
+                                    🔄 Switched to {m.modelSwitch}
+                                </span>
+                                <div className="flex-1 h-px bg-white/10" />
+                            </div>
+                        );
+                    }
+
                     const isUser = m.role === "user";
                     const isAssistant = m.role === "assistant";
 

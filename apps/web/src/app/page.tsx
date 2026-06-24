@@ -20,12 +20,7 @@ import type { Msg } from "@/components/chat/MessageList";
 
 import Composer, { type ComposerHandle } from "@/components/chat/Composer";
 
-import {
-  MODEL_OPTIONS,
-  getTemperature,
-  thinkingText,
-  buildSectionedChoices,
-} from "@/lib/models";
+import { MODEL_OPTIONS, getTemperature, thinkingText, buildSectionedChoices, prettifyModelName } from "@/lib/models";
 
 import ModelTierPicker from "@/components/chat/ModelTierPicker";
 import {
@@ -535,7 +530,19 @@ export default function Page() {
 
     const base = isRetry
       ? messages.slice(0, messages.map((m, i) => ({ m, i })).reverse().find(x => x.m.role === "user")!.i + 1)
-      : [...messages, { role: "user" as const, content: userText }];
+      : (() => {
+        const prev = [...messages];
+        const lastModel = prev.findLast(m => m.modelSwitch)?.modelSwitch
+          ?? chats.find(c => c.id === activeChatId)?.model
+          ?? null;
+
+        const switched = lastModel && lastModel !== model;
+        const newMsgs: Msg[] = switched
+          ? [...prev, { role: "system" as const, content: "", modelSwitch: prettifyModelName(model.split(":")[1] ?? model) }]
+          : [...prev];
+
+        return [...newMsgs, { role: "user" as const, content: userText }];
+      })();
 
     setMessages([...base, { role: "assistant", content: "" }]);
     if (!isRetry) setInput("");
