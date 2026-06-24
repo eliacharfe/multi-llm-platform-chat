@@ -11,7 +11,7 @@ import "@/lib/prism";
 import CopyButton from "@/components/ui/CopyButton";
 import ActionButton from "@/components/ui/ActionButton";
 
-export type Msg = { role: "user" | "assistant" | "system"; content: string };
+export type Msg = { role: "user" | "assistant" | "system"; content: string; isError?: boolean };
 
 function Spinner() {
     return (
@@ -200,63 +200,78 @@ export default function MessageList({
                                             )}
 
                                         {m.content?.length ? (
-                                            <ReactMarkdown
-                                                remarkPlugins={[remarkGfm]}
-                                                components={{
-                                                    code({ className, children, ...props }) {
-                                                        const lang = (className || "").match(/language-(\w+)/)?.[1] || "";
-                                                        const isBlock = /language-\w+/.test(className || "");
+                                            isAssistant && m.isError ? (
+                                                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+                                                    <div className="flex items-start gap-2">
+                                                        <span className="mt-0.5" aria-hidden="true">⚠️</span>
+                                                        <span>{m.content}</span>
+                                                    </div>
+                                                    {idx === messages.length - 1 && !isStreaming && (
+                                                        <div className="mt-3">
+                                                            <RetryButton onClick={onRetry} />
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ) : (
+                                                <ReactMarkdown
+                                                    remarkPlugins={[remarkGfm]}
+                                                    components={{
+                                                        code({ className, children, ...props }) {
+                                                            const lang = (className || "").match(/language-(\w+)/)?.[1] || "";
+                                                            const isBlock = /language-\w+/.test(className || "");
 
-                                                        if (isBlock) {
-                                                            const raw = childrenToText(children).replace(/\n$/, "");
-                                                            const grammar = (Prism.languages as any)[lang];
-                                                            const highlighted = grammar ? Prism.highlight(raw, grammar, lang) : raw;
+                                                            if (isBlock) {
+                                                                const raw = childrenToText(children).replace(/\n$/, "");
+                                                                const grammar = (Prism.languages as any)[lang];
+                                                                const highlighted = grammar ? Prism.highlight(raw, grammar, lang) : raw;
+
+                                                                return (
+                                                                    <div className="relative my-3 max-w-full min-w-0" dir="ltr">
+                                                                        <div className="absolute right-2 top-2 flex items-center gap-2">
+                                                                            {lang && (
+                                                                                <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
+                                                                                    {lang}
+                                                                                </span>
+                                                                            )}
+                                                                            <CopyButton text={raw} className="bg-black/30" title="Copy code" />
+                                                                        </div>
+
+                                                                        <pre
+                                                                            dir="ltr"
+                                                                            className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto max-w-full text-sm"
+                                                                        >
+                                                                            <code
+                                                                                className={className}
+                                                                                dangerouslySetInnerHTML={{ __html: highlighted }}
+                                                                            />
+                                                                        </pre>
+                                                                    </div>
+                                                                );
+                                                            }
 
                                                             return (
-                                                                <div className="relative my-3 max-w-full min-w-0" dir="ltr">
-                                                                    <div className="absolute right-2 top-2 flex items-center gap-2">
-                                                                        {lang && (
-                                                                            <span className="text-[11px] text-gray-400 rounded-md border border-white/10 bg-black/30 px-2 py-1">
-                                                                                {lang}
-                                                                            </span>
-                                                                        )}
-                                                                        <CopyButton text={raw} className="bg-black/30" title="Copy code" />
-                                                                    </div>
-
-                                                                    <pre
-                                                                        dir="ltr"
-                                                                        className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto max-w-full text-sm"
-                                                                    >
-                                                                        <code
-                                                                            className={className}
-                                                                            dangerouslySetInnerHTML={{ __html: highlighted }}
-                                                                        />
-                                                                    </pre>
-                                                                </div>
+                                                                <code
+                                                                    dir="ltr"
+                                                                    className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
+                                                                    {...props}
+                                                                >
+                                                                    {children}
+                                                                </code>
                                                             );
-                                                        }
-
-                                                        return (
-                                                            <code
-                                                                dir="ltr"
-                                                                className="bg-[#1e1e1e] border border-white/10 px-1.5 py-0.5 rounded text-xs"
-                                                                {...props}
-                                                            >
-                                                                {children}
-                                                            </code>
-                                                        );
-                                                    },
-                                                }}
-                                            >
-                                                {m.content}
-                                            </ReactMarkdown>
+                                                        },
+                                                    }}
+                                                >
+                                                    {m.content}
+                                                </ReactMarkdown>
+                                            )
                                         ) : null}
                                     </div>
 
                                     {isAssistant &&
                                         (m.content?.length ?? 0) > 0 &&
                                         idx === messages.length - 1 &&
-                                        !isStreaming ? (
+                                        !isStreaming &&
+                                        !m.isError ? (
                                         <div className={["mt-2 flex items-center gap-2", isRTL ? "justify-end" : "justify-start"].join(" ")}>
                                             <CopyButton
                                                 text={conversationText}

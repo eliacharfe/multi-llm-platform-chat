@@ -217,14 +217,26 @@ def sse(payload: Dict[str, Any]) -> str:
 def short_error_message(err: str) -> str:
     s = (err or "").strip()
 
-    if "RESOURCE_EXHAUSTED" in s or "Quota exceeded" in s:
-        return "Gemini quota exceeded (rate limit). Try again later or switch model."
+    checks = [
+        (["RESOURCE_EXHAUSTED", "Quota exceeded", "rate_limit_exceeded"], "Rate limit reached. Try again in a moment or switch models."),
+        (["503", "UNAVAILABLE", "high demand", "Spikes in demand", "overloaded"], "Gemini is overloaded right now. Try again in a moment or switch to a different model."),
+        (["Invalid/expired token", "Missing Authorization"], "Session expired. Please sign in again."),
+        (["Connection error", "ConnectionError", "RemoteDisconnected"], "Connection lost. Check your internet and try again."),
+        (["context_length_exceeded", "maximum context length", "token limit"], "This conversation is too long for the model. Start a new chat."),
+        (["insufficient_quota", "billing", "payment"], "API quota exhausted. Check your billing settings."),
+        (["model_not_found", "ModelNotFoundError", "does not exist"], "Model unavailable. Please switch to a different model."),
+        (["Timeout", "timed out", "ReadTimeout"], "The request timed out. Try again or switch to a faster model."),
+        (["safety", "content_filter", "blocked"], "The response was blocked by a content filter."),
+    ]
 
-    if "Invalid/expired token" in s or "Missing Authorization" in s:
-        return "Authentication error. Please sign in again."
+    for keywords, message in checks:
+        if any(k in s for k in keywords):
+            return message
 
-    first = s.splitlines()[0] if s else "Unknown error"
-    return (first[:140] + "…") if len(first) > 140 else first
+    # fallback: first line, truncated
+    first = s.splitlines()[0] if s else "Something went wrong."
+    return (first[:140] + "…") if len(first) > 140 else first or "Something went wrong."
+
 
 
 def parse_provider_model(provider_model: str) -> Tuple[str, str]:

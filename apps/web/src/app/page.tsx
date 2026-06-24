@@ -590,9 +590,8 @@ export default function Page() {
           setMessages(prev => {
             const copy = [...prev];
             const last = copy[copy.length - 1];
-            const text = `⚠️ ${errMsg}`;
-            if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: text };
-            else copy.push({ role: "assistant", content: text });
+            if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: errMsg, isError: true };
+            else copy.push({ role: "assistant", content: errMsg, isError: true });
             return copy;
           });
         },
@@ -605,9 +604,9 @@ export default function Page() {
         setMessages(prev => {
           const copy = [...prev];
           const last = copy[copy.length - 1];
-          const text = `⚠️ ${String(e?.message || e)}`;
-          if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: text };
-          else copy.push({ role: "assistant", content: text });
+          const errMsg = String(e?.message || e);
+          if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: errMsg, isError: true };
+          else copy.push({ role: "assistant", content: errMsg, isError: true });
           return copy;
         });
       }
