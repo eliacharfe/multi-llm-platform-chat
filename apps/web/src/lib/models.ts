@@ -36,6 +36,41 @@ const TEMPERATURE_BY_MODEL: Record<string, number> = {
     "gemini:models/gemini-2.5-flash": 0.7,
 };
 
+// Cost per 1M tokens in USD
+export const MODEL_PRICING: Record<string, { input: number; output: number }> = {
+    "openai:gpt-5-nano": { input: 0.15, output: 0.60 },
+    "openai:gpt-5-mini": { input: 1.10, output: 4.40 },
+    "openai:gpt-5": { input: 2.50, output: 10.00 },
+    "openrouter:deepseek/deepseek-chat": { input: 0.27, output: 1.10 },
+    "openrouter:x-ai/grok-4.3": { input: 3.00, output: 15.00 },
+    "openrouter:openai/gpt-4o-mini": { input: 0.15, output: 0.60 },
+    "openrouter:mistralai/mistral-large-2512": { input: 2.00, output: 6.00 },
+    "groq:llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
+    "groq:llama-3.3-70b-versatile": { input: 0.59, output: 0.79 },
+    "anthropic:claude-sonnet-4-6": { input: 3.00, output: 15.00 },
+    "anthropic:claude-opus-4-6": { input: 15.00, output: 75.00 },
+    "anthropic:claude-haiku-4-5": { input: 0.80, output: 4.00 },
+    "gemini:models/gemini-2.5-flash-lite": { input: 0.10, output: 0.40 },
+    "gemini:models/gemini-2.5-flash": { input: 0.30, output: 2.50 },
+};
+
+export function estimateTokens(text: string): number {
+    return Math.ceil((text || "").length / 4);
+}
+
+export function estimateCost(model: string, inputTokens: number, outputTokens: number): number {
+    const pricing = MODEL_PRICING[model];
+    if (!pricing) return 0;
+    return (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output;
+}
+
+export function formatCost(usd: number): string {
+    if (usd === 0) return "$0.00";
+    if (usd < 0.0001) return "<$0.0001";
+    if (usd < 0.01) return `$${usd.toFixed(4)}`;
+    return `$${usd.toFixed(3)}`;
+}
+
 
 const PROVIDER_TITLES: Record<string, string> = {
     openai: "OpenAI",

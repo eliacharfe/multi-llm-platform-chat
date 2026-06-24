@@ -16,11 +16,11 @@ import type { ChatListItem } from "@/components/chat/Sidebar";
 
 import MessageList from "@/components/chat/MessageList";
 import type { Msg } from "@/components/chat/MessageList";
-
+import TokenCounter from "@/components/chat/TokenCounter";
 
 import Composer, { type ComposerHandle } from "@/components/chat/Composer";
 
-import { MODEL_OPTIONS, getTemperature, thinkingText, buildSectionedChoices, prettifyModelName } from "@/lib/models";
+import { MODEL_OPTIONS, getTemperature, thinkingText, buildSectionedChoices, prettifyModelName, estimateTokens } from "@/lib/models";
 
 import ModelTierPicker from "@/components/chat/ModelTierPicker";
 import {
@@ -92,6 +92,9 @@ export default function Page() {
 
   const composerRef = useRef<ComposerHandle | null>(null);
   const prevStreamingRef = useRef(false);
+
+  const [inputTokens, setInputTokens] = useState(0);
+  const [outputTokens, setOutputTokens] = useState(0);
 
   useEffect(() => {
     const was = prevStreamingRef.current;
@@ -551,6 +554,9 @@ export default function Page() {
     scrollToBottom(true);
 
     isStreamingRef.current = true;
+    const inputText = base.map(m => m.content || "").join(" ");
+    setInputTokens(estimateTokens(inputText));
+    setOutputTokens(0);
     setIsStreaming(true);
     const ac = new AbortController();
     abortRef.current = ac;
@@ -584,6 +590,7 @@ export default function Page() {
         res,
         ac.signal,
         (t) => {
+          setOutputTokens(prev => prev + estimateTokens(t));
           setMessages(prev => {
             const copy = [...prev];
             const last = copy[copy.length - 1];
@@ -777,6 +784,13 @@ export default function Page() {
                 />
               </div>
             </div>
+
+            <TokenCounter
+              model={model}
+              inputTokens={inputTokens}
+              outputTokens={outputTokens}
+              isStreaming={isStreaming}
+            />
 
             {/* COMPOSER */}
             <Composer
