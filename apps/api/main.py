@@ -1148,7 +1148,11 @@ async def chat_stream_with_files(
             has_images=has_images,
         )
     else:
-        user_payload = build_general_task_prompt(user_text)
+        is_first_message = not any(
+            m.role == "assistant" and (m.content or "").strip()
+            for m in chat.messages
+        )
+        user_payload = build_general_task_prompt(user_text) if is_first_message else user_text
 
     # -------------------------------------------------------------------------
     # Stream + flush into DB
