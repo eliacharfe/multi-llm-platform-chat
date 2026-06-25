@@ -3,6 +3,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, type User } from "firebase/auth";
 
@@ -34,6 +35,8 @@ import {
 
 export default function Page() {
   const DEFAULT_MODEL = "gemini:models/gemini-2.5-flash";
+
+  const router = useRouter();
 
   const [autoModelByProvider, setAutoModelByProvider] = useState<Record<string, string>>(() => ({
     [getProvider(DEFAULT_MODEL)]: DEFAULT_MODEL,
@@ -896,19 +899,35 @@ export default function Page() {
                 "h-14",
                 "border-b border-white/10",
                 "bg-[#252525]/70 backdrop-blur-xl",
-                "flex items-center",
+                "flex items-center justify-between",
                 "px-3 sm:px-6",
               ].join(" ")}
             >
               <div className="flex items-center gap-3">
                 {/* Spacer for mobile hamburger so it never collides */}
                 <div className="w-8 sm:hidden" />
+
                 <ModelTierPicker
                   model={model}
                   tier={inferTierFromModel(model)}
                   onChangeTier={switchTier}
                 />
               </div>
+
+              <button
+                type="button"
+                onClick={() => router.push("/premium")}
+                className={[
+                  "hidden sm:block",                         // ← add this
+                  "rounded-full px-4 py-2 text-sm font-semibold",
+                  "bg-gradient-to-r from-yellow-300 to-amber-500",
+                  "text-black shadow-sm",
+                  "transition hover:scale-[1.03] hover:shadow-md",
+                  "active:scale-[0.98]",
+                ].join(" ")}
+              >
+                Premium
+              </button>
             </div>
             {/* chat scroller */}
             <div

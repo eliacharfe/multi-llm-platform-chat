@@ -297,6 +297,19 @@ const Composer = forwardRef<ComposerHandle, {
                     >
                         LinkedIn
                     </a>
+                    {" "}
+                    •{" "}
+                    <a href="/terms" className="text-gray-400 hover:text-gray-200 underline underline-offset-2">
+                        Terms
+                    </a>{" "}
+                    •{" "}
+                    <a href="/privacy" className="text-gray-400 hover:text-gray-200 underline underline-offset-2">
+                        Privacy
+                    </a>{" "}
+                    •{" "}
+                    <a href="/refund" className="text-gray-400 hover:text-gray-200 underline underline-offset-2">
+                        Refund
+                    </a>
                 </div>
 
             </div>

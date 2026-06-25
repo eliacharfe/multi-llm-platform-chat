@@ -167,7 +167,6 @@ export default function Sidebar({
 
             {/* Sidebar content */}
             {!isSidebarCollapsed && (
-                // <div className="flex-1 min-h-0 px-4 pb-4 pt-0 flex flex-col">
                 <div
                     className={[
                         "flex-1 min-h-0 px-4 pb-4 flex flex-col",
@@ -176,6 +175,16 @@ export default function Sidebar({
                 >
                     {/* Top actions */}
                     <div className="flex flex-col gap-3 shrink-0">
+
+                        {isSmall && (
+                            <a
+                                href="/premium"
+                                className="w-full rounded-full bg-gradient-to-r from-yellow-300 to-amber-500 px-4 py-2 text-sm font-semibold text-black text-center"
+                            >
+                                ⚡ Upgrade to Premium
+                            </a>
+                        )}
+
                         <button
                             className="w-full rounded-lg bg-white/10 hover:bg-white/15 transition px-3 py-2 text-sm text-left"
                             onClick={onNewChat}
