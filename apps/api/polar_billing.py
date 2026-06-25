@@ -159,8 +159,6 @@ async def polar_webhook(request: Request):
 
     elif event_type == "subscription.canceled":
         print(f"[polar webhook] subscription.canceled firebase_uid={firebase_uid}")
-        if firebase_uid:
-            await _set_premium(firebase_uid, False)
 
     elif event_type == "subscription.revoked":
         print(f"[polar webhook] subscription.revoked firebase_uid={firebase_uid}")
@@ -174,7 +172,7 @@ async def polar_webhook(request: Request):
         if firebase_uid:
             if status == "active":
                 await _set_premium(firebase_uid, True, polar_subscription_id=sub_id)
-            elif status in ("canceled", "revoked"):
+            elif status == "revoked":
                 await _set_premium(firebase_uid, False)
 
     return {"ok": True}
