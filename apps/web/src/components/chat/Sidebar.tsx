@@ -11,6 +11,7 @@ export type ChatListItem = {
     title: string;
     model: string;
     updated_at: string;
+    snippet?: string | null;
 };
 
 function formatChatTime(iso: string) {
@@ -163,37 +164,6 @@ export default function Sidebar({
                     </div>
                 </div>
             )}
-            {/* <div className="relative pt-20 px-2">
-                <div
-                    className={[
-                        "absolute top-2 z-10",
-                        isSidebarCollapsed ? "left-1/2 -translate-x-1/2" : "right-2",
-                    ].join(" ")}
-                >
-                    <IconGhostButton
-                        label={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                        withTooltip={false}
-                        size="md"
-                        onClick={() => setIsSidebarCollapsed((v) => !v)}
-                        disabled={isStreaming}
-                    >
-                        <svg
-                            viewBox="0 0 24 24"
-                            className={`h-5 w-5 transition-transform duration-200 ${isSidebarCollapsed ? "rotate-180" : ""
-                                }`}
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            aria-hidden="true"
-                        >
-                            <rect x="4" y="5" width="16" height="14" rx="2" />
-                            <path d="M12 5v14" />
-                        </svg>
-                    </IconGhostButton>
-                </div>
-            </div> */}
 
             {/* Sidebar content */}
             {!isSidebarCollapsed && (
@@ -286,6 +256,9 @@ export default function Sidebar({
                                                     </div>
                                                 </div>
                                                 <div className="mt-1 text-[11px] text-gray-400 truncate">{c.model}</div>
+                                                {c.snippet && (
+                                                    <div className="mt-1 text-[11px] text-gray-500 truncate italic">{c.snippet}</div>
+                                                )}
                                             </button>
 
                                             <div className="absolute right-2 bottom-2 opacity-0 group-hover:opacity-100 pointer-coarse:opacity-100">

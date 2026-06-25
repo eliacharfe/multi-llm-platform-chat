@@ -796,6 +796,78 @@ async def list_chats(authorization: str | None = Header(default=None)):
             ]
         )
 
+@app.get("/v1/chats/search")
+async def search_chats(q: str = "", authorization: str | None = Header(default=None)):
+    user_id = require_user_id_from_auth(authorization)
+
+    q = (q or "").strip()
+    if not q:
+        return {"chats": []}
+
+    async with SessionLocal() as session:
+        # Search titles
+        title_matches = (await session.execute(
+            select(ChatRow)
+            .where(
+                ChatRow.user_id == user_id,
+                ChatRow.title.ilike(f"%{q}%"),
+            )
+            .order_by(desc(ChatRow.updated_at))
+            .limit(20)
+        )).scalars().all()
+
+        # Search message content
+        msg_matches = (await session.execute(
+            select(MessageRow)
+            .join(ChatRow, ChatRow.id == MessageRow.chat_id)
+            .where(
+                ChatRow.user_id == user_id,
+                MessageRow.content.ilike(f"%{q}%"),
+            )
+            .order_by(desc(ChatRow.updated_at))
+            .limit(30)
+        )).scalars().all()
+
+        # Dedupe by chat_id, title matches first
+        seen: set[str] = set()
+        results = []
+
+        for chat in title_matches:
+            if chat.id not in seen:
+                seen.add(chat.id)
+                results.append({
+                    "id": chat.id,
+                    "title": chat.title,
+                    "model": chat.model,
+                    "updated_at": chat.updated_at.isoformat(),
+                    "snippet": None,
+                })
+
+        for msg in msg_matches:
+            if msg.chat_id not in seen:
+                seen.add(msg.chat_id)
+                chat = (await session.execute(
+                    select(ChatRow).where(ChatRow.id == msg.chat_id)
+                )).scalars().first()
+                if not chat:
+                    continue
+
+                content = msg.content or ""
+                idx = content.lower().find(q.lower())
+                start = max(0, idx - 40)
+                end = min(len(content), idx + 80)
+                snippet = ("…" if start > 0 else "") + content[start:end].strip() + ("…" if end < len(content) else "")
+
+                results.append({
+                    "id": chat.id,
+                    "title": chat.title,
+                    "model": chat.model,
+                    "updated_at": chat.updated_at.isoformat(),
+                    "snippet": snippet,
+                })
+
+        return {"chats": results}
+
 @app.delete("/v1/chats/{chat_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_chat(chat_id: str, authorization: str | None = Header(default=None)):
     user_id = require_user_id_from_auth(authorization)
@@ -1310,3 +1382,4 @@ async def chat_stream_with_files(
             yield sse({"done": True})
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+

@@ -96,6 +96,14 @@ export default function Page() {
   const [inputTokens, setInputTokens] = useState(0);
   const [outputTokens, setOutputTokens] = useState(0);
 
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [filteredChats, setFilteredChats] = useState<ChatListItem[]>([]);
+  // const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    if (!chatSearch.trim()) setFilteredChats(chats);
+  }, [chats]);
+
   useEffect(() => {
     const was = prevStreamingRef.current;
     const now = isStreaming;
@@ -506,11 +514,37 @@ export default function Page() {
     };
   }, [isStreaming]);
 
-  const filteredChats = useMemo(() => {
-    const q = chatSearch.trim().toLowerCase();
-    if (!q) return chats;
-    return chats.filter((c) => (c.title || "").toLowerCase().includes(q));
-  }, [chats, chatSearch]);
+  useEffect(() => {
+    const q = chatSearch.trim();
+
+    if (!q) {
+      setFilteredChats(chats);
+      return;
+    }
+
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+
+    searchTimerRef.current = setTimeout(async () => {
+      // setIsSearching(true);
+      try {
+        const token = await auth.currentUser?.getIdToken();
+        const res = await fetch(
+          `${apiUrl}/v1/chats/search?q=${encodeURIComponent(q)}`,
+          { headers: token ? { Authorization: `Bearer ${token}` } : {} }
+        );
+        const data = await res.json();
+        setFilteredChats(data?.chats || []);
+      } catch {
+        setFilteredChats([]);
+      } finally {
+        // setIsSearching(false);
+      }
+    }, 300);
+
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [chatSearch, chats, apiUrl]);
 
   const conversationText = useMemo(() => {
     return messages
