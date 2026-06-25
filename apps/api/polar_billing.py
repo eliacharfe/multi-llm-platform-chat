@@ -150,7 +150,8 @@ async def polar_webhook(request: Request):
 
     if event_type == "subscription.active":
         sub_id = data.get("id")
-        print(f"[polar webhook] subscription.active sub_id={sub_id} firebase_uid={firebase_uid}")
+        print(f"[polar webhook] subscription.active FULL data keys: {list(data.keys())}")
+        print(f"[polar webhook] subscription.active id={sub_id} subscription_id={data.get('subscription_id')}")
         if firebase_uid:
             await _set_premium(firebase_uid, True, polar_subscription_id=sub_id)
         else:
