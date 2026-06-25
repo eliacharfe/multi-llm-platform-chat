@@ -206,16 +206,17 @@ async def cancel_subscription(
         print(f"[cancel] ❌ user not premium uid={uid}")
         raise HTTPException(400, "No active premium subscription.")
 
-    url = f"{POLAR_BASE_URL}/v1/subscriptions/{sub_id}/cancel"
-    print(f"[cancel] calling Polar: POST {url}")
+    url = f"{POLAR_BASE_URL}/v1/subscriptions/{sub_id}"
+    print(f"[cancel] calling Polar: PATCH {url}")
 
     async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
-        res = await client.post(
-            url,
+        res = await client.patch(
+            f"{POLAR_BASE_URL}/v1/subscriptions/{sub_id}",
             headers={
                 "Authorization": f"Bearer {POLAR_ACCESS_TOKEN}",
                 "Content-Type": "application/json",
             },
+            json={"cancel_at_period_end": True},
         )
 
     print(f"[cancel] Polar response: status={res.status_code} body={res.text[:300]}")
