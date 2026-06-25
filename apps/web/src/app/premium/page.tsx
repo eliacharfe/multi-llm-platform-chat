@@ -83,7 +83,7 @@ function PremiumPageInner() {
 
             // Open Paddle.js overlay
             const paddle = await initializePaddle({
-                environment: "sandbox",
+                environment: process.env.NEXT_PUBLIC_PADDLE_ENV === "production" ? "production" : "sandbox",
                 token: process.env.NEXT_PUBLIC_PADDLE_CLIENT_TOKEN!,
             });
 
