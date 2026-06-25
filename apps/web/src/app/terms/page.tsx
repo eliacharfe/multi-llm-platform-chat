@@ -131,6 +131,9 @@ export default function TermsPage() {
                 support@multillm.net
               </a>
             </p>
+            <p className="mt-2">
+              MultiLLM is operated by Eliachar Feig, based in Israel.
+            </p>
           </section>
 
         </div>
