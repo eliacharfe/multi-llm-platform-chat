@@ -38,7 +38,7 @@ export const metadata: Metadata = {
   ],
   authors: [{ name: "Eliachar Feig" }],
   creator: "Eliachar Feig",
-  metadataBase: new URL("https://multi-llm-platform-premium.vercel.app"),
+  metadataBase: new URL("https://multillm.net"),
 
   icons: {
     icon: [
@@ -55,7 +55,7 @@ export const metadata: Metadata = {
     title: "Multi-LLM Platform",
     description:
       "Chat with multiple AI models in one powerful streaming interface.",
-    url: "https://multi-llm-platform-premium.vercel.app",
+    url: "https://multillm.net",
     siteName: "Multi-LLM Platform",
     type: "website",
   },

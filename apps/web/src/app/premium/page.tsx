@@ -58,6 +58,13 @@ function PremiumPageInner() {
         doReactivate();
     }, [isReactivate, checking]);
 
+    useEffect(() => {
+        const plan = searchParams.get("upgrade");
+        if (!plan || checking) return;
+        if (plan === "monthly" || plan === "yearly") {
+            handleCheckout(plan);
+        }
+    }, [checking, searchParams]);
 
     const handleCheckout = async (plan: "monthly" | "yearly") => {
         try {

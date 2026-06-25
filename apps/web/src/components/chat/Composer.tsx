@@ -302,6 +302,11 @@ const Composer = forwardRef<ComposerHandle, {
                     </a>
                     {" "}
                     •{" "}
+                    <a href="/pricing" className="text-gray-400 hover:text-gray-200 underline underline-offset-2">
+                        Pricing
+                    </a>
+                    {" "}
+                    •{" "}
                     <a href="/terms" className="text-gray-400 hover:text-gray-200 underline underline-offset-2">
                         Terms
                     </a>{" "}
