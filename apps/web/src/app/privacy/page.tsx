@@ -46,7 +46,7 @@ export default function PrivacyPage() {
               </li>
               <li>
                 <span className="text-white font-medium">Payment data:</span> We do not store
-                your payment details. All billing is handled by Paddle (paddle.com), who
+                your payment details. All billing is handled by Polar (polar.sh), who
                 processes payments as the Merchant of Record.
               </li>
               <li>

@@ -54,8 +54,8 @@ export default function TermsPage() {
             <p>
               MultiLLM offers paid Premium plans (monthly and yearly) that unlock access to
               additional AI models and higher usage limits. Payments are processed securely by
-              Paddle (paddle.com), who acts as the Merchant of Record for all transactions.
-              By purchasing a Premium plan, you also agree to Paddle's terms of service.
+              Polar (polar.sh), who acts as the Merchant of Record for all transactions.
+              By purchasing a Premium plan, you also agree to Polar's terms of service.
             </p>
             <p className="mt-3">
               Subscription fees are billed in advance. Subscriptions renew automatically at the end

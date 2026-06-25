@@ -70,8 +70,8 @@ export default function RefundPage() {
           <section>
             <h2 className="text-xl font-semibold text-white mb-3">Payment Processing</h2>
             <p>
-              All payments are processed by Paddle (paddle.com), who acts as the Merchant of
-              Record. Refunds will appear on your statement from Paddle. Processing time may
+              All payments are processed by Polar (polar.sh), who acts as the Merchant of
+              Record. Refunds will appear on your statement from Polar Software, Inc. Processing time may
               vary depending on your bank or card provider (typically 3–10 business days).
             </p>
           </section>

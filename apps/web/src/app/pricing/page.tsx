@@ -128,7 +128,7 @@ export default function PricingPage() {
                 {/* Guarantees */}
                 <div className="grid gap-4 md:grid-cols-3 mb-12 text-center">
                     {[
-                        { icon: "🔒", title: "Secure payments", body: "All transactions processed by Paddle, a trusted Merchant of Record." },
+                        { icon: "🔒", title: "Secure payments", body: "All transactions processed by Polar (polar.sh), a trusted Merchant of Record." },
                         { icon: "↩️", title: "14-day refund", body: "Not happy? Email us within 14 days for a full refund, no questions asked." },
                         { icon: "✕", title: "Cancel anytime", body: "No lock-in. Cancel from your account settings whenever you want." },
                     ].map((g) => (
@@ -155,7 +155,7 @@ export default function PricingPage() {
                             },
                             {
                                 q: "Who processes my payment?",
-                                a: "Payments are handled by Paddle (paddle.com), who acts as the Merchant of Record. Your card statement will show a charge from Paddle.",
+                                a: "Payments are handled by Polar (polar.sh), who acts as the Merchant of Record. Your card statement will show a charge from Polar Software, Inc.",
                             },
                             {
                                 q: "Is my data private?",
