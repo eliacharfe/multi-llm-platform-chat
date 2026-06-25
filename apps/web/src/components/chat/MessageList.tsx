@@ -62,6 +62,8 @@ export default function MessageList({
     conversationText,
     onRetry,
     onEditMessage,
+    onShare,
+    isShareLoading,
 }: {
     messages: Msg[];
     isStreaming: boolean;
@@ -71,6 +73,8 @@ export default function MessageList({
     conversationText: string;
     onRetry: () => void;
     onEditMessage: (idx: number, newContent: string) => void;
+    onShare?: () => void;
+    isShareLoading?: boolean;
 }) {
 
     const [editingIdx, setEditingIdx] = useState<number | null>(null);
@@ -351,6 +355,20 @@ export default function MessageList({
                                                 title="Try again"
                                                 onClick={onRetry}
                                             />
+                                            {/* <ActionButton
+                                                label="Share"
+                                                title="Share conversation"
+                                                onClick={onShare}
+                                                disabled={isShareLoading}
+                                            /> */}
+                                            {onShare && (
+                                                <ActionButton
+                                                    label={isShareLoading ? "…" : "Share"}
+                                                    title="Share conversation"
+                                                    onClick={onShare}
+                                                    disabled={isShareLoading}
+                                                />
+                                            )}
                                         </div>
                                     ) : null}
 

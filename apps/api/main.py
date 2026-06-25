@@ -27,6 +27,8 @@ from fastapi import UploadFile, File, Form, Header, HTTPException
 import firebase_admin
 from firebase_admin import credentials, auth as fb_auth
 
+import secrets
+
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
 
 import openai, inspect
@@ -884,6 +886,47 @@ async def delete_chat(chat_id: str, authorization: str | None = Header(default=N
         await session.delete(chat)
         await session.commit()
     return
+
+@app.post("/v1/chats/{chat_id}/share")
+async def share_chat(chat_id: str, authorization: str | None = Header(default=None)):
+    user_id = require_user_id_from_auth(authorization)
+
+    async with SessionLocal() as session:
+        chat = (await session.execute(
+            select(ChatRow).where(ChatRow.id == chat_id, ChatRow.user_id == user_id)
+        )).scalars().first()
+
+        if not chat:
+            raise HTTPException(404, "Chat not found")
+
+        if not chat.share_token:
+            chat.share_token = secrets.token_urlsafe(32)
+            await session.commit()
+            await session.refresh(chat)
+
+        return {"share_token": chat.share_token}
+
+
+@app.get("/v1/shared/{token}")
+async def get_shared_chat(token: str):
+    async with SessionLocal() as session:
+        chat = (await session.execute(
+            select(ChatRow)
+            .where(ChatRow.share_token == token)
+            .options(selectinload(ChatRow.messages))
+        )).scalars().first()
+
+        if not chat:
+            raise HTTPException(404, "Shared chat not found")
+
+        return {
+            "title": chat.title,
+            "model": chat.model,
+            "messages": [
+                {"role": m.role, "content": m.content}
+                for m in chat.messages
+            ],
+        }
 
     
 @app.get("/v1/chats/{chat_id}", response_model=ChatWithMessagesResponse)

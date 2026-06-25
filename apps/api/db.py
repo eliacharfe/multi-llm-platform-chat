@@ -31,6 +31,7 @@ class Chat(Base):
     user_id: Mapped[str] = mapped_column(String(128), index=True)
     title: Mapped[str] = mapped_column(String(200), default="New Chat")
     model: Mapped[str] = mapped_column(String(200))
+    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True, default=None)  # 👈 add this
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)

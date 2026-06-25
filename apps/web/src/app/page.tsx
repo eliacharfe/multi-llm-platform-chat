@@ -100,6 +100,11 @@ export default function Page() {
   const [filteredChats, setFilteredChats] = useState<ChatListItem[]>([]);
   // const [isSearching, setIsSearching] = useState(false);
 
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareLoading, setShareLoading] = useState(false);
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [shareCopied, setShareCopied] = useState(false);
+
   useEffect(() => {
     if (!chatSearch.trim()) setFilteredChats(chats);
   }, [chats]);
@@ -754,7 +759,25 @@ export default function Page() {
     }
   }
 
+  async function shareChat() {
+    if (!activeChatId) return;
+    setShareLoading(true);
+    try {
+      const data = await api<{ share_token: string }>(`/v1/chats/${activeChatId}/share`, {
+        method: "POST",
+      });
+      const url = `${window.location.origin}/share/${data.share_token}`;
+      setShareUrl(url);
+      setShareModalOpen(true);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setShareLoading(false);
+    }
+  }
+
   return (
+
     <main className="fixed inset-0 h-dvh w-screen bg-[#252525] text-gray-200 overflow-hidden flex flex-col">
       <LogoSplash
         show={showSplash}
@@ -905,6 +928,8 @@ export default function Page() {
                   conversationText={conversationText}
                   onRetry={() => submit(true)}
                   onEditMessage={editMessage}
+                  onShare={activeChatId ? shareChat : undefined}
+                  isShareLoading={shareLoading}
                 />
               </div>
             </div>
@@ -959,6 +984,45 @@ export default function Page() {
           await fn();
         }}
       />
+
+      {shareModalOpen && shareUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#2b2b2b] p-6 shadow-xl mx-4">
+            <h2 className="text-base font-semibold text-gray-100 mb-1">Share conversation</h2>
+            <p className="text-xs text-gray-400 mb-4">Anyone with this link can view the conversation.</p>
+
+            <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+              <span className="flex-1 text-xs text-gray-300 truncate">{shareUrl}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  navigator.clipboard.writeText(shareUrl);
+                  setShareCopied(true);
+                  setTimeout(() => setShareCopied(false), 2000);
+                }}
+                className={[
+                  "shrink-0 rounded-md border px-2 py-1 text-xs transition",
+                  shareCopied
+                    ? "border-green-500/40 bg-green-500/20 text-green-400"
+                    : "border-white/10 bg-white/5 text-gray-200 hover:bg-white/10",
+                ].join(" ")}
+              >
+                {shareCopied ? "✓ Copied!" : "Copy"}
+              </button>
+            </div>
+
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={() => { setShareModalOpen(false); setShareCopied(false); }}
+                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 hover:bg-white/10 transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
