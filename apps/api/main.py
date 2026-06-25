@@ -31,6 +31,7 @@ import secrets
 from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
 from fastapi import Request
 import httpx
+from billing import router as billing_router
 
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
 
@@ -46,6 +47,8 @@ from clients import (
 )
 
 app = FastAPI()
+
+app.include_router(billing_router)
 
 app.add_middleware(
     CORSMiddleware,

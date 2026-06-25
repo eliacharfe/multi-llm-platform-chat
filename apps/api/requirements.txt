@@ -12,3 +12,4 @@ sqlalchemy
 asyncpg
 firebase-admin
 requests
+paddle-python-sdk
