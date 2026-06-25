@@ -38,8 +38,8 @@ export default function RefundPage() {
             <h2 className="text-xl font-semibold text-white mb-3">How to Request a Refund</h2>
             <p>
               Email us at{" "}
-              <a href="mailto:multillm.support@gmail.com" className="text-teal-400 hover:underline">
-                multillm.support@gmail.com
+              <a href="mailto:support@multillm.net" className="text-teal-400 hover:underline">
+                support@multillm.net
               </a>{" "}
               within 14 days of your purchase with the subject line "Refund Request". Include
               the email address you used to sign up and we'll process it promptly — typically
@@ -80,8 +80,8 @@ export default function RefundPage() {
             <h2 className="text-xl font-semibold text-white mb-3">Contact Us</h2>
             <p>
               Still have questions?{" "}
-              <a href="mailto:multillm.support@gmail.com" className="text-teal-400 hover:underline">
-                multillm.support@gmail.com
+              <a href="mailto:support@multillm.net" className="text-teal-400 hover:underline">
+                support@multillm.net
               </a>
             </p>
           </section>
