@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import List
 
-from sqlalchemy import String, Text, DateTime, ForeignKey, Index
+from sqlalchemy import String, Text, DateTime, ForeignKey, Index, Boolean, Integer
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
 
@@ -24,6 +24,17 @@ def utcnow() -> datetime:
     return datetime.utcnow()
 
 
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String(128), primary_key=True)  # Firebase UID
+    is_premium: Mapped[bool] = mapped_column(Boolean, default=False)
+    message_count_today: Mapped[int] = mapped_column(Integer, default=0)
+    message_count_reset_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
+
+
 class Chat(Base):
     __tablename__ = "chats"
 
@@ -31,7 +42,7 @@ class Chat(Base):
     user_id: Mapped[str] = mapped_column(String(128), index=True)
     title: Mapped[str] = mapped_column(String(200), default="New Chat")
     model: Mapped[str] = mapped_column(String(200))
-    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True, default=None)  # 👈 add this
+    share_token: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True, default=None)
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow, index=True)
@@ -49,7 +60,7 @@ class Message(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     chat_id: Mapped[str] = mapped_column(String(36), ForeignKey("chats.id", ondelete="CASCADE"), index=True)
 
-    role: Mapped[str] = mapped_column(String(16))  # system/user/assistant
+    role: Mapped[str] = mapped_column(String(16))
     content: Mapped[str] = mapped_column(Text, default="")
 
     created_at: Mapped[datetime] = mapped_column(DateTime, default=utcnow)

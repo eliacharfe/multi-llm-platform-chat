@@ -32,6 +32,7 @@ from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
 from fastapi import Request
 import httpx
 from billing import router as billing_router
+from user_service import check_and_increment_usage, get_or_create_user, PREMIUM_MODELS
 
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
 
@@ -116,9 +117,9 @@ MODEL_OPTIONS = [
     "openrouter:mistralai/mistral-large-2512",
     "groq:llama-3.1-8b-instant",
     "groq:llama-3.3-70b-versatile",
+    "anthropic:claude-haiku-4-5",
     "anthropic:claude-sonnet-4-6",
     "anthropic:claude-opus-4-6",
-    "anthropic:claude-haiku-4-5",
     "gemini:models/gemini-2.5-flash-lite",
     "gemini:models/gemini-2.5-flash",
 ]
@@ -128,9 +129,9 @@ VISION_MODELS = {
     "openai:gpt-5-mini",
     "openai:gpt-5",
     "openrouter:openai/gpt-4o-mini",
+    "anthropic:claude-haiku-4-5", 
     "anthropic:claude-sonnet-4-6", 
     "anthropic:claude-opus-4-6", 
-    "anthropic:claude-haiku-4-5", 
     "gemini:models/gemini-2.5-flash-lite",
     "gemini:models/gemini-2.5-flash",
 }
@@ -148,9 +149,9 @@ TEMPERATURE_BY_MODEL: Dict[str, float] = {
     "groq:llama-3.1-8b-instant": 0.7,
     "groq:llama-3.2-3b": 0.6,
     "groq:llama-3.3-70b-versatile": 0.7,
+    "anthropic:claude-haiku-4-5": 0.7,
     "anthropic:claude-sonnet-4-6": 0.6,
     "anthropic:claude-opus-4-6": 0.6,
-    "anthropic:claude-haiku-4-5": 0.7,
     "gemini:models/gemini-2.5-flash-lite": 0.7,
     "gemini:models/gemini-2.5-flash": 0.7,
 }
@@ -770,6 +771,19 @@ def derive_title_from_messages(msgs: List[ChatMsg]) -> str:
     return (one_line[:42] + "…") if len(one_line) > 42 else one_line
 
 
+# Add to main.py
+
+@app.get("/v1/me")
+async def get_me(authorization: str | None = Header(default=None)):
+    user_id = require_user_id_from_auth(authorization)
+    user = await get_or_create_user(user_id)
+    return {
+        "is_premium": user.is_premium,
+        "message_count_today": user.message_count_today,
+        "daily_limit": None if user.is_premium else 20,
+    }
+
+
 @app.post("/v1/chats", response_model=CreateChatResponse)
 async def create_chat(req: CreateChatRequest, authorization: str | None = Header(default=None)):
     user_id = require_user_id_from_auth(authorization)
@@ -1161,6 +1175,36 @@ async def chat_stream_with_files(
             iter([sse({"error": f"Unsupported model: {model}"}), sse({"done": True})]),
             media_type="text/event-stream",
         )
+
+    # ── Premium model gate ──────────────────────────────────────────────────
+    if model in PREMIUM_MODELS:
+        user = await get_or_create_user(user_id)
+        if not user.is_premium:
+            return StreamingResponse(
+                iter([
+                    sse({
+                        "error": "This model requires a Premium subscription.",
+                        "error_short": "Premium model. Upgrade to access."
+                    }),
+                    sse({"done": True})
+                ]),
+                media_type="text/event-stream",
+            )
+
+    # ── Usage limit gate (free users only) ─────────────────────────────────
+    if not retry:
+        allowed, used, limit = await check_and_increment_usage(user_id)
+        if not allowed:
+            return StreamingResponse(
+                iter([
+                    sse({
+                        "error": f"Daily limit reached ({limit} messages/day). Upgrade to Premium for unlimited access.",
+                        "error_short": f"Daily limit reached ({used}/{limit}). Upgrade to Premium."
+                    }),
+                    sse({"done": True})
+                ]),
+                media_type="text/event-stream",
+            )
 
     try:
         parsed = json.loads(messages or "[]")

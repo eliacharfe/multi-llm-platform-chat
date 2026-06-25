@@ -12,17 +12,18 @@ export default function PremiumSuccessPage() {
     const [countdown, setCountdown] = useState(5);
 
     useEffect(() => {
-        // Force token refresh so the new premium claim is picked up
         auth.currentUser?.getIdToken(true).catch(() => { });
 
+        let count = 5;
+        setCountdown(count);
+
         const interval = setInterval(() => {
-            setCountdown((v) => {
-                if (v <= 1) {
-                    clearInterval(interval);
-                    router.push("/");
-                }
-                return v - 1;
-            });
+            count -= 1;
+            setCountdown(count);
+            if (count <= 0) {
+                clearInterval(interval);
+                router.push("/");
+            }
         }, 1000);
 
         return () => clearInterval(interval);

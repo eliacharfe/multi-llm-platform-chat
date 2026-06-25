@@ -34,6 +34,7 @@ const Composer = forwardRef<ComposerHandle, {
     isSmall: boolean;
     isSidebarCollapsed: boolean;
     onToggleSidebar: () => void;
+    isPremium?: boolean;
 }>(function Composer(
     {
         input,
@@ -54,6 +55,7 @@ const Composer = forwardRef<ComposerHandle, {
         isSmall,
         isSidebarCollapsed,
         onToggleSidebar,
+        isPremium,
     },
     ref
 ) {
@@ -227,6 +229,7 @@ const Composer = forwardRef<ComposerHandle, {
                                     options={modelChoices}
                                     onChange={(v) => onChangeModel(v)}
                                     disabled={isStreaming}
+                                    isPremium={isPremium}
                                 />
                             </div>
 

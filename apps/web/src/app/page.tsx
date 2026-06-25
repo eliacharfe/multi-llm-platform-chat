@@ -108,6 +108,27 @@ export default function Page() {
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [shareCopied, setShareCopied] = useState(false);
 
+  const [isPremium, setIsPremium] = useState(false);
+
+  async function fetchMe(user: User) {
+    try {
+      console.log("[fetchMe] uid:", user.uid);  // ← add this
+      const token = await user.getIdToken();
+      const res = await fetch(`${apiUrl}/v1/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.ok) {
+        const data = await res.json();
+        console.log("[fetchMe] data:", data);
+        setIsPremium(!!data.is_premium);
+      } else {
+        console.log("[fetchMe] failed:", res.status);
+      }
+    } catch (e) {
+      console.log("[fetchMe] error:", e);
+    }
+  }
+
   useEffect(() => {
     if (!chatSearch.trim()) setFilteredChats(chats);
   }, [chats]);
@@ -245,6 +266,7 @@ export default function Page() {
 
       if (!u) {
         setUserLabel("Sign in");
+        setIsPremium(false);
         setChats([]);
         setActiveChatId(null);
         setMessages([]);
@@ -257,7 +279,7 @@ export default function Page() {
       setUserLabel(u.displayName || u.email || "Account");
 
       try {
-        await refreshChats(u);
+        await Promise.all([refreshChats(u), fetchMe(u)]);
       } catch {
         // ignore
       }
@@ -886,6 +908,7 @@ export default function Page() {
           userLabel={userLabel}
           isAuthed={isAuthed}
           onOpenAuth={() => setAuthOpen(true)}
+          isPremium={isPremium}
         />
 
         {/* MAIN CHAT AREA */}
@@ -914,20 +937,30 @@ export default function Page() {
                 />
               </div>
 
-              <button
-                type="button"
-                onClick={() => router.push("/premium")}
-                className={[
-                  "hidden sm:block",                         // ← add this
+              {isPremium ? (
+                <span className={[
+                  "hidden sm:flex items-center gap-1.5",
                   "rounded-full px-4 py-2 text-sm font-semibold",
-                  "bg-gradient-to-r from-yellow-300 to-amber-500",
-                  "text-black shadow-sm",
-                  "transition hover:scale-[1.03] hover:shadow-md",
-                  "active:scale-[0.98]",
-                ].join(" ")}
-              >
-                Premium
-              </button>
+                  "bg-teal-500/20 border border-teal-400/30 text-teal-300",
+                ].join(" ")}>
+                  ⚡ Premium
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => router.push("/premium")}
+                  className={[
+                    "hidden sm:block",
+                    "rounded-full px-4 py-2 text-sm font-semibold",
+                    "bg-gradient-to-r from-yellow-300 to-amber-500",
+                    "text-black shadow-sm",
+                    "transition hover:scale-[1.03] hover:shadow-md",
+                    "active:scale-[0.98]",
+                  ].join(" ")}
+                >
+                  Premium
+                </button>
+              )}
             </div>
             {/* chat scroller */}
             <div
@@ -983,6 +1016,7 @@ export default function Page() {
               isSmall={isSmall}
               isSidebarCollapsed={isSidebarCollapsed}
               onToggleSidebar={() => setIsSidebarCollapsed((v) => !v)}
+              isPremium={isPremium}
             />
           </div>
         </section>

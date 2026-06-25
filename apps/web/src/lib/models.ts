@@ -13,9 +13,9 @@ export const MODEL_OPTIONS = [
     "openrouter:mistralai/mistral-large-2512",
     "groq:llama-3.1-8b-instant",
     "groq:llama-3.3-70b-versatile",
+    "anthropic:claude-haiku-4-5",
     "anthropic:claude-sonnet-4-6",
     "anthropic:claude-opus-4-6",
-    "anthropic:claude-haiku-4-5",
     "gemini:models/gemini-2.5-flash-lite",
     "gemini:models/gemini-2.5-flash",
 ] as const;
@@ -29,12 +29,18 @@ const TEMPERATURE_BY_MODEL: Record<string, number> = {
     "groq:llama-3.1-8b-instant": 0.7,
     "groq:llama-3.2-3b": 0.6,
     "groq:llama-3.3-70b-versatile": 0.7,
+    "anthropic:claude-haiku-4-5": 0.7,
     "anthropic:claude-sonnet-4-6": 0.6,
     "anthropic:claude-opus-4-6": 0.6,
-    "anthropic:claude-haiku-4-5": 0.7,
     "gemini:models/gemini-2.5-flash-lite": 0.7,
     "gemini:models/gemini-2.5-flash": 0.7,
 };
+
+export const PREMIUM_MODELS = new Set([
+    "anthropic:claude-opus-4-6",
+    "openai:gpt-5",
+    "openrouter:mistralai/mistral-large-2512",
+]);
 
 // Cost per 1M tokens in USD
 export const MODEL_PRICING: Record<string, { input: number; output: number }> = {
@@ -47,9 +53,9 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
     "openrouter:mistralai/mistral-large-2512": { input: 2.00, output: 6.00 },
     "groq:llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
     "groq:llama-3.3-70b-versatile": { input: 0.59, output: 0.79 },
+    "anthropic:claude-haiku-4-5": { input: 0.80, output: 4.00 },
     "anthropic:claude-sonnet-4-6": { input: 3.00, output: 15.00 },
     "anthropic:claude-opus-4-6": { input: 15.00, output: 75.00 },
-    "anthropic:claude-haiku-4-5": { input: 0.80, output: 4.00 },
     "gemini:models/gemini-2.5-flash-lite": { input: 0.10, output: 0.40 },
     "gemini:models/gemini-2.5-flash": { input: 0.30, output: 2.50 },
 };

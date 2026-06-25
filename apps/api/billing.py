@@ -3,38 +3,32 @@
 # apps/api/billing.py
 
 import os
+import json
 from fastapi import APIRouter, Header, HTTPException, Request
-from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from paddle_billing import Client, Environment, Options
-from paddle_billing.Entities.Shared import Status
 from paddle_billing.Notifications import Verifier, Secret
+from user_service import set_premium as db_set_premium
 
-from db import SessionLocal, utcnow
-from sqlalchemy import select
-from db import Chat as ChatRow  # reuse your existing db
+import firebase_admin.auth as fb_auth
 
 router = APIRouter()
 
-# ── Paddle client ──────────────────────────────────────────────────────────────
-_env = Environment.Sandbox if os.getenv("PADDLE_ENV", "sandbox") == "sandbox" else Environment.Production
+IS_SANDBOX = os.getenv("PADDLE_ENV", "sandbox") == "sandbox"
 
 paddle = Client(
-    os.environ["PADDLE_API_KEY"],
-    options=Options(Environment.Production),
+    os.environ["PADDLE_SANDBOX_API_KEY"] if IS_SANDBOX else os.environ["PADDLE_API_KEY"],
+    options=Options(Environment.Sandbox if IS_SANDBOX else Environment.Production),
 )
 
 PRICE_IDS = {
-    "monthly": os.environ["PADDLE_MONTHLY_PRICE_ID"],
-    "yearly":  os.environ["PADDLE_YEARLY_PRICE_ID"],
+    "monthly": os.environ["PADDLE_SANDBOX_MONTHLY_PRICE_ID"] if IS_SANDBOX else os.environ["PADDLE_MONTHLY_PRICE_ID"],
+    "yearly":  os.environ["PADDLE_SANDBOX_YEARLY_PRICE_ID"] if IS_SANDBOX else os.environ["PADDLE_YEARLY_PRICE_ID"],
 }
 
 FRONTEND_URL = os.getenv("FRONTEND_URL", "https://multillm.net")
 
-
-# ── Auth helper (reuse your existing one) ─────────────────────────────────────
-import firebase_admin.auth as fb_auth
 
 def _uid_from_token(authorization: str | None) -> str:
     if not authorization or not authorization.startswith("Bearer "):
@@ -50,10 +44,9 @@ def _uid_from_token(authorization: str | None) -> str:
         raise HTTPException(401, "Invalid/expired token")
 
 
-# ── POST /billing/create-checkout-session ─────────────────────────────────────
 class CheckoutRequest(BaseModel):
-    plan: str  # "monthly" | "yearly"
-    
+    plan: str
+
 
 @router.post("/billing/create-checkout-session")
 async def create_checkout_session(
@@ -61,7 +54,6 @@ async def create_checkout_session(
     authorization: str | None = Header(default=None),
 ):
     uid = _uid_from_token(authorization)
-
     price_id = PRICE_IDS.get(body.plan)
     if not price_id:
         raise HTTPException(400, f"Invalid plan: {body.plan}")
@@ -70,48 +62,42 @@ async def create_checkout_session(
         from paddle_billing.Resources.Transactions.Operations.CreateTransaction import CreateTransaction
         from paddle_billing.Resources.Transactions.Operations.Create.TransactionCreateItem import TransactionCreateItem
         from paddle_billing.Entities.Shared.CustomData import CustomData
-        from paddle_billing.Entities.Shared.Checkout import Checkout
 
         result = paddle.transactions.create(
             CreateTransaction(
                 items=[TransactionCreateItem(price_id=price_id, quantity=1)],
                 custom_data=CustomData({"firebase_uid": uid, "plan": body.plan}),
-                checkout=Checkout(url=f"{FRONTEND_URL}/premium/success"),
             )
         )
 
         print("Transaction created:", result.id)
-        checkout_url = f"https://buy.paddle.com/checkout/{result.id}"
-        return {"url": checkout_url}
+        return {"transaction_id": result.id}
 
     except Exception as e:
         import traceback
         traceback.print_exc()
-        # Print the full Paddle error response
-        if hasattr(e, 'error'):
-            print("Paddle error detail:", e.error)
-        if hasattr(e, 'response'):
-            print("Paddle response:", e.response)
-        if hasattr(paddle.transactions, 'response'):
-            print("Paddle raw response:", paddle.transactions.response)
         raise HTTPException(500, str(e))
 
 
-# ── POST /billing/webhook ──────────────────────────────────────────────────────
 @router.post("/billing/webhook")
 async def paddle_webhook(request: Request):
     body = await request.body()
-    signature = request.headers.get("paddle-signature", "")
-    secret = os.getenv("PADDLE_WEBHOOK_SECRET", "")
+    secret = os.getenv("PADDLE_SANDBOX_WEBHOOK_SECRET" if IS_SANDBOX else "PADDLE_WEBHOOK_SECRET", "")
 
-    # Verify signature
+    class PaddleRequest:
+        def __init__(self, body: bytes, headers):
+            self.body = body
+            self.content = body
+            self.data = body
+            self.headers = headers
+
     try:
         verifier = Verifier()
-        verifier.verify(body, Secret(secret), signature)
-    except Exception:
+        verifier.verify(PaddleRequest(body, request.headers), Secret(secret))
+    except Exception as e:
+        print(f"[webhook] signature failed: {e}")
         raise HTTPException(403, "Invalid webhook signature")
 
-    import json
     payload = json.loads(body)
     event_type = payload.get("event_type", "")
     data = payload.get("data", {})
@@ -119,17 +105,12 @@ async def paddle_webhook(request: Request):
     firebase_uid = custom_data.get("firebase_uid")
 
     if not firebase_uid:
-        return {"ok": True}  # nothing to do
+        return {"ok": True}
 
-    # subscription.activated → grant premium
     if event_type == "subscription.activated":
         await _set_premium(firebase_uid, True)
-
-    # subscription.canceled → revoke premium
     elif event_type == "subscription.canceled":
         await _set_premium(firebase_uid, False)
-
-    # subscription.updated → handle plan changes
     elif event_type == "subscription.updated":
         status = data.get("status", "")
         if status == "active":
@@ -141,8 +122,8 @@ async def paddle_webhook(request: Request):
 
 
 async def _set_premium(firebase_uid: str, is_premium: bool):
-    """Set custom claim on Firebase user so frontend can check it."""
     try:
         fb_auth.set_custom_user_claims(firebase_uid, {"premium": is_premium})
     except Exception as e:
-        print(f"[billing] Failed to set premium claim for {firebase_uid}: {e}")
+        print(f"[billing] Failed to set Firebase claim for {firebase_uid}: {e}")
+    await db_set_premium(firebase_uid, is_premium)

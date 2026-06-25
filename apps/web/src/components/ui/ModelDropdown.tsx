@@ -3,6 +3,7 @@
 
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import Tooltip from "@/components/ui/Tooltip";
+import { PREMIUM_MODELS } from "@/lib/models";
 
 export type SelectOpt = { value: string; label: string; disabled?: boolean };
 
@@ -11,11 +12,13 @@ export default function ModelDropdown({
     options,
     onChange,
     disabled,
+    isPremium,
 }: {
     value: string;
     options: SelectOpt[];
     onChange: (v: string) => void;
     disabled?: boolean;
+    isPremium?: boolean;
 }) {
     const [open, setOpen] = useState(false);
     const wrapRef = useRef<HTMLDivElement | null>(null);
@@ -130,24 +133,35 @@ export default function ModelDropdown({
                                 }
 
                                 const isActive = opt.value === value;
+                                const isLocked = !isPremium && PREMIUM_MODELS.has(opt.value);
 
                                 return (
                                     <button
                                         key={opt.value}
                                         type="button"
                                         onClick={() => {
+                                            if (isLocked) return;
                                             onChange(opt.value);
                                             setOpen(false);
                                         }}
                                         className={[
                                             "w-full text-left px-3 py-2 rounded-xl text-sm transition-colors duration-150",
-                                            "hover:bg-white/8",
+                                            isLocked
+                                                ? "opacity-40 cursor-not-allowed"
+                                                : "hover:bg-white/8",
                                             isActive
                                                 ? "bg-white/10 text-gray-100"
                                                 : "text-gray-200",
                                         ].join(" ")}
                                     >
-                                        {opt.label}
+                                        <div className="flex items-center justify-between">
+                                            <span>{opt.label}</span>
+                                            {isLocked && (
+                                                <span className="text-[10px] text-amber-400/80 flex items-center gap-1">
+                                                    🔒 Premium
+                                                </span>
+                                            )}
+                                        </div>
                                     </button>
                                 );
                             })}

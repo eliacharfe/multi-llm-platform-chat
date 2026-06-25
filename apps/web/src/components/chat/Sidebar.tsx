@@ -63,6 +63,7 @@ export default function Sidebar({
     userLabel,
     isAuthed,
     onOpenAuth,
+    isPremium,
 }: {
     isSmall: boolean;
     isSidebarCollapsed: boolean;
@@ -87,6 +88,7 @@ export default function Sidebar({
     userLabel: string;
     isAuthed: boolean;
     onOpenAuth: () => void;
+    isPremium: boolean;
 }) {
 
     const [loadingTick, setLoadingTick] = React.useState(0);
@@ -177,12 +179,18 @@ export default function Sidebar({
                     <div className="flex flex-col gap-3 shrink-0">
 
                         {isSmall && (
-                            <a
-                                href="/premium"
-                                className="w-full rounded-full bg-gradient-to-r from-yellow-300 to-amber-500 px-4 py-2 text-sm font-semibold text-black text-center"
-                            >
-                                ⚡ Upgrade to Premium
-                            </a>
+                            isPremium ? (
+                                <div className="w-full rounded-full bg-teal-500/20 border border-teal-400/30 px-4 py-2 text-sm font-semibold text-teal-300 text-center">
+                                    ⚡ Premium
+                                </div>
+                            ) : (
+                                <a
+                                    href="/premium"
+                                    className="w-full rounded-full bg-gradient-to-r from-yellow-300 to-amber-500 px-4 py-2 text-sm font-semibold text-black text-center"
+                                >
+                                    ⚡ Upgrade to Premium
+                                </a>
+                            )
                         )}
 
                         <button
@@ -304,7 +312,13 @@ export default function Sidebar({
                     </div>
 
                     {/* Footer */}
-                    <div className="shrink-0 pt-4">
+                    <div className="shrink-0 pt-4 space-y-2">
+                        {isPremium && (
+                            <div className="flex items-center gap-2 rounded-lg bg-teal-500/10 border border-teal-400/20 px-3 py-2">
+                                <span className="text-teal-400 text-sm">⚡</span>
+                                <span className="text-xs text-teal-300 font-medium">Premium</span>
+                            </div>
+                        )}
                         <button
                             type="button"
                             onClick={onOpenAuth}
