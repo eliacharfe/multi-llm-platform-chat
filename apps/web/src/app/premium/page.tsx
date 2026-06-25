@@ -80,8 +80,6 @@ function PremiumPageInner() {
 
             if (!res.ok) throw new Error("Failed to create checkout session");
             const data = await res.json();
-
-            // Redirect to Polar hosted checkout
             window.location.href = data.checkout_url;
 
         } catch (err) {
@@ -100,58 +98,58 @@ function PremiumPageInner() {
         );
     }
 
-    if (isPremium) {
-        if (reactivating) {
-            return (
-                <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center">
-                    <div className="text-center">
-                        <div className="animate-spin w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full mx-auto mb-4" />
-                        <p className="text-white/50 text-sm">Reactivating your subscription…</p>
-                    </div>
-                </main>
-            );
-        }
+    if (reactivating) {
+        return (
+            <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full mx-auto mb-4" />
+                    <p className="text-white/50 text-sm">Reactivating your subscription…</p>
+                </div>
+            </main>
+        );
+    }
 
-        if (reactivated) {
-            return (
-                <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center px-6">
-                    <div className="max-w-md w-full text-center">
-                        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-teal-500/20 border border-teal-400/30">
-                            <span className="text-4xl">⚡</span>
-                        </div>
-                        <h1 className="text-3xl font-bold">You're back!</h1>
-                        <p className="mt-3 text-white/60">
-                            Your Premium subscription is active again. You won't be charged anything extra.
-                        </p>
-                        <button
-                            type="button"
-                            onClick={() => router.push("/")}
-                            className="mt-8 w-full rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
-                        >
-                            Back to chat
-                        </button>
+    if (reactivated) {
+        return (
+            <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center px-6">
+                <div className="max-w-md w-full text-center">
+                    <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-teal-500/20 border border-teal-400/30">
+                        <span className="text-4xl">⚡</span>
                     </div>
-                </main>
-            );
-        }
+                    <h1 className="text-3xl font-bold">You're back!</h1>
+                    <p className="mt-3 text-white/60">
+                        Your Premium subscription is active again. You won't be charged anything extra.
+                    </p>
+                    <button
+                        type="button"
+                        onClick={() => router.push("/")}
+                        className="mt-8 w-full rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
+                    >
+                        Back to chat
+                    </button>
+                </div>
+            </main>
+        );
+    }
 
-        if (reactivateError) {
-            return (
-                <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center px-6">
-                    <div className="max-w-md w-full text-center">
-                        <p className="text-red-400 text-sm mb-4">{reactivateError}</p>
-                        <button
-                            type="button"
-                            onClick={() => router.push("/")}
-                            className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/70 hover:text-white"
-                        >
-                            Back to chat
-                        </button>
-                    </div>
-                </main>
-            );
-        }
+    if (reactivateError) {
+        return (
+            <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center px-6">
+                <div className="max-w-md w-full text-center">
+                    <p className="text-red-400 text-sm mb-4">{reactivateError}</p>
+                    <button
+                        type="button"
+                        onClick={() => router.push("/")}
+                        className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/70 hover:text-white"
+                    >
+                        Back to chat
+                    </button>
+                </div>
+            </main>
+        );
+    }
 
+    if (isPremium && !isReactivate) {
         return (
             <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center px-6">
                 <div className="max-w-md w-full text-center">
@@ -189,7 +187,6 @@ function PremiumPageInner() {
                 </p>
 
                 <div className="mt-8 grid gap-6 md:grid-cols-2">
-                    {/* Monthly Plan */}
                     <div className="rounded-2xl border border-white/10 bg-white/5 p-6">
                         <h2 className="text-2xl font-semibold">Monthly Plan</h2>
                         <p className="mt-4 text-4xl font-bold">
@@ -213,7 +210,6 @@ function PremiumPageInner() {
                         </button>
                     </div>
 
-                    {/* Yearly Plan */}
                     <div className="rounded-2xl border border-teal-400/30 bg-teal-500/10 p-6 relative">
                         <span className="absolute right-4 top-4 rounded-full bg-teal-400 px-3 py-1 text-xs font-bold text-black">
                             Best Value
