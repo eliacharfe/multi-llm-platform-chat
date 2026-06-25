@@ -9,7 +9,7 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { initializePaddle } from "@paddle/paddle-js";
 
-export default function PremiumPage() {
+function PremiumPageInner() {
     const router = useRouter();
     const apiUrl = process.env.NEXT_PUBLIC_API_URL!;
     const [isPremium, setIsPremium] = useState(false);
@@ -247,5 +247,19 @@ export default function PremiumPage() {
                 </p>
             </div>
         </main>
+    );
+}
+
+import { Suspense } from "react";
+
+export default function PremiumPage() {
+    return (
+        <Suspense fallback={
+            <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center">
+                <p className="text-white/40 text-sm">Loading…</p>
+            </main>
+        }>
+            <PremiumPageInner />
+        </Suspense>
     );
 }
