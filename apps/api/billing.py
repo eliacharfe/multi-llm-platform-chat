@@ -22,7 +22,7 @@ _env = Environment.Sandbox if os.getenv("PADDLE_ENV", "sandbox") == "sandbox" el
 
 paddle = Client(
     os.environ["PADDLE_API_KEY"],
-    options=Options(_env),
+    options=Options(Environment.Production),
 )
 
 PRICE_IDS = {
@@ -53,7 +53,7 @@ def _uid_from_token(authorization: str | None) -> str:
 # ── POST /billing/create-checkout-session ─────────────────────────────────────
 class CheckoutRequest(BaseModel):
     plan: str  # "monthly" | "yearly"
-
+    
 
 @router.post("/billing/create-checkout-session")
 async def create_checkout_session(
@@ -67,14 +67,33 @@ async def create_checkout_session(
         raise HTTPException(400, f"Invalid plan: {body.plan}")
 
     try:
-        result = paddle.checkout.sessions.create(
-            items=[{"price_id": price_id, "quantity": 1}],
-            custom_data={"firebase_uid": uid, "plan": body.plan},
-            success_url=f"{FRONTEND_URL}/premium/success",
-            cancel_url=f"{FRONTEND_URL}/premium",
+        from paddle_billing.Resources.Transactions.Operations.CreateTransaction import CreateTransaction
+        from paddle_billing.Resources.Transactions.Operations.Create.TransactionCreateItem import TransactionCreateItem
+        from paddle_billing.Entities.Shared.CustomData import CustomData
+        from paddle_billing.Entities.Shared.Checkout import Checkout
+
+        result = paddle.transactions.create(
+            CreateTransaction(
+                items=[TransactionCreateItem(price_id=price_id, quantity=1)],
+                custom_data=CustomData({"firebase_uid": uid, "plan": body.plan}),
+                checkout=Checkout(url=f"{FRONTEND_URL}/premium/success"),
+            )
         )
-        return {"url": result.url}
+
+        print("Transaction created:", result.id)
+        checkout_url = f"https://buy.paddle.com/checkout/{result.id}"
+        return {"url": checkout_url}
+
     except Exception as e:
+        import traceback
+        traceback.print_exc()
+        # Print the full Paddle error response
+        if hasattr(e, 'error'):
+            print("Paddle error detail:", e.error)
+        if hasattr(e, 'response'):
+            print("Paddle response:", e.response)
+        if hasattr(paddle.transactions, 'response'):
+            print("Paddle raw response:", paddle.transactions.response)
         raise HTTPException(500, str(e))
 
 
