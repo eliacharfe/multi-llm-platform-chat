@@ -58,9 +58,11 @@ export default function TermsPage() {
               By purchasing a Premium plan, you also agree to Paddle's terms of service.
             </p>
             <p className="mt-3">
-              Subscription fees are billed in advance. Your plan will remain active until the
-              end of the billing period. We do not offer automatic renewals by default — you
-              control your subscription.
+              Subscription fees are billed in advance. Subscriptions renew automatically at the end
+              of each billing period unless cancelled. You may cancel at any time from your account
+              settings before the next renewal date. Upon cancellation, your account will remain
+              active until the end of the current billing period. After expiry, your chat history
+              is retained for 30 days before being permanently deleted.
             </p>
           </section>
 
