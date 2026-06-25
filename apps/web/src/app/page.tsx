@@ -941,13 +941,21 @@ export default function Page() {
               </div>
 
               {isPremium ? (
-                <span className={[
-                  "hidden sm:flex items-center gap-1.5",
-                  "rounded-full px-4 py-2 text-sm font-semibold",
-                  "bg-teal-500/20 border border-teal-400/30 text-teal-300",
-                ].join(" ")}>
-                  ⚡ Premium
-                </span>
+                <div className="hidden sm:flex items-center gap-3">
+                  <span className={[
+                    "flex items-center gap-1.5",
+                    "rounded-full px-4 py-2 text-sm font-semibold",
+                    "bg-teal-500/20 border border-teal-400/30 text-teal-300",
+                  ].join(" ")}>
+                    ⚡ Premium
+                  </span>
+                  <a
+                    href="/premium/cancel"
+                    className="text-xs text-gray-400 hover:text-red-400 transition underline underline-offset-2"
+                  >
+                    Cancel subscription
+                  </a>
+                </div>
               ) : (
                 <button
                   type="button"
@@ -1023,7 +1031,7 @@ export default function Page() {
             />
           </div>
         </section>
-      </div>
+      </div >
 
       <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
 
@@ -1042,44 +1050,46 @@ export default function Page() {
         }}
       />
 
-      {shareModalOpen && shareUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#2b2b2b] p-6 shadow-xl mx-4">
-            <h2 className="text-base font-semibold text-gray-100 mb-1">Share conversation</h2>
-            <p className="text-xs text-gray-400 mb-4">Anyone with this link can view the conversation.</p>
+      {
+        shareModalOpen && shareUrl && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
+            <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#2b2b2b] p-6 shadow-xl mx-4">
+              <h2 className="text-base font-semibold text-gray-100 mb-1">Share conversation</h2>
+              <p className="text-xs text-gray-400 mb-4">Anyone with this link can view the conversation.</p>
 
-            <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
-              <span className="flex-1 text-xs text-gray-300 truncate">{shareUrl}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  navigator.clipboard.writeText(shareUrl);
-                  setShareCopied(true);
-                  setTimeout(() => setShareCopied(false), 2000);
-                }}
-                className={[
-                  "shrink-0 rounded-md border px-2 py-1 text-xs transition",
-                  shareCopied
-                    ? "border-green-500/40 bg-green-500/20 text-green-400"
-                    : "border-white/10 bg-white/5 text-gray-200 hover:bg-white/10",
-                ].join(" ")}
-              >
-                {shareCopied ? "✓ Copied!" : "Copy"}
-              </button>
-            </div>
+              <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/20 px-3 py-2">
+                <span className="flex-1 text-xs text-gray-300 truncate">{shareUrl}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(shareUrl);
+                    setShareCopied(true);
+                    setTimeout(() => setShareCopied(false), 2000);
+                  }}
+                  className={[
+                    "shrink-0 rounded-md border px-2 py-1 text-xs transition",
+                    shareCopied
+                      ? "border-green-500/40 bg-green-500/20 text-green-400"
+                      : "border-white/10 bg-white/5 text-gray-200 hover:bg-white/10",
+                  ].join(" ")}
+                >
+                  {shareCopied ? "✓ Copied!" : "Copy"}
+                </button>
+              </div>
 
-            <div className="mt-4 flex justify-end">
-              <button
-                type="button"
-                onClick={() => { setShareModalOpen(false); setShareCopied(false); }}
-                className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 hover:bg-white/10 transition"
-              >
-                Close
-              </button>
+              <div className="mt-4 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => { setShareModalOpen(false); setShareCopied(false); }}
+                  className="rounded-lg border border-white/10 bg-white/5 px-4 py-2 text-sm text-gray-300 hover:bg-white/10 transition"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </main>
+        )
+      }
+    </main >
   );
 }

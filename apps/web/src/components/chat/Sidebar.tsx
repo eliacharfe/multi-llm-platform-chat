@@ -180,8 +180,14 @@ export default function Sidebar({
 
                         {isSmall && (
                             isPremium ? (
-                                <div className="w-full rounded-full bg-teal-500/20 border border-teal-400/30 px-4 py-2 text-sm font-semibold text-teal-300 text-center">
-                                    ⚡ Premium
+                                <div className="w-full flex items-center justify-between rounded-full bg-teal-500/20 border border-teal-400/30 px-4 py-2 text-sm font-semibold text-teal-300">
+                                    <span>⚡ Premium</span>
+                                    <a
+                                        href="/premium/cancel"
+                                        className="text-[11px] font-normal text-gray-400 hover:text-red-400 transition underline underline-offset-2"
+                                    >
+                                        Cancel
+                                    </a>
                                 </div>
                             ) : (
                                 <a
@@ -314,9 +320,17 @@ export default function Sidebar({
                     {/* Footer */}
                     <div className="shrink-0 pt-4 space-y-2">
                         {isPremium && (
-                            <div className="flex items-center gap-2 rounded-lg bg-teal-500/10 border border-teal-400/20 px-3 py-2">
-                                <span className="text-teal-400 text-sm">⚡</span>
-                                <span className="text-xs text-teal-300 font-medium">Premium</span>
+                            <div className="flex items-center justify-between gap-2 rounded-lg bg-teal-500/10 border border-teal-400/20 px-3 py-2">
+                                <div className="flex items-center gap-2">
+                                    <span className="text-teal-400 text-sm">⚡</span>
+                                    <span className="text-xs text-teal-300 font-medium">Premium</span>
+                                </div>
+                                <a
+                                    href="/premium/cancel"
+                                    className="text-[11px] text-gray-400 hover:text-red-400 transition underline underline-offset-2"
+                                >
+                                    Cancel
+                                </a>
                             </div>
                         )}
                         <button

@@ -29,7 +29,7 @@ async def get_or_create_user(uid: str) -> User:
         return user
 
 
-async def set_premium(uid: str, is_premium: bool) -> None:
+async def set_premium(uid: str, is_premium: bool, paddle_subscription_id: str | None = None) -> None:
     async with SessionLocal() as session:
         user = (await session.execute(
             select(User).where(User.id == uid)
@@ -37,9 +37,13 @@ async def set_premium(uid: str, is_premium: bool) -> None:
 
         if not user:
             user = User(id=uid, is_premium=is_premium)
+            if paddle_subscription_id is not None:
+                user.paddle_subscription_id = paddle_subscription_id
             session.add(user)
         else:
             user.is_premium = is_premium
+            if paddle_subscription_id is not None:
+                user.paddle_subscription_id = paddle_subscription_id
             user.updated_at = utcnow()
 
         await session.commit()

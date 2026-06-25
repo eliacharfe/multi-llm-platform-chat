@@ -108,22 +108,102 @@ async def paddle_webhook(request: Request):
         return {"ok": True}
 
     if event_type == "subscription.activated":
-        await _set_premium(firebase_uid, True)
+        sub_id = data.get("id")  # "sub_abc123"
+        await _set_premium(firebase_uid, True, paddle_subscription_id=sub_id)
     elif event_type == "subscription.canceled":
         await _set_premium(firebase_uid, False)
     elif event_type == "subscription.updated":
         status = data.get("status", "")
         if status == "active":
-            await _set_premium(firebase_uid, True)
+            sub_id = data.get("id")
+            await _set_premium(firebase_uid, True, paddle_subscription_id=sub_id)
         elif status in ("canceled", "paused"):
             await _set_premium(firebase_uid, False)
 
     return {"ok": True}
 
 
-async def _set_premium(firebase_uid: str, is_premium: bool):
+async def _set_premium(firebase_uid: str, is_premium: bool, paddle_subscription_id: str | None = None):
     try:
         fb_auth.set_custom_user_claims(firebase_uid, {"premium": is_premium})
     except Exception as e:
         print(f"[billing] Failed to set Firebase claim for {firebase_uid}: {e}")
-    await db_set_premium(firebase_uid, is_premium)
+    await db_set_premium(firebase_uid, is_premium, paddle_subscription_id=paddle_subscription_id)
+
+
+import httpx
+
+@router.post("/v1/subscriptions/cancel")
+async def cancel_subscription(
+    authorization: str | None = Header(default=None),
+):
+    uid = _uid_from_token(authorization)
+
+    from user_service import get_or_create_user
+    user = await get_or_create_user(uid)
+
+    sub_id = getattr(user, "paddle_subscription_id", None)
+    if not sub_id:
+        raise HTTPException(400, "No active subscription found.")
+    if not user.is_premium:
+        raise HTTPException(400, "No active premium subscription.")
+
+    api_key = os.environ["PADDLE_SANDBOX_API_KEY"] if IS_SANDBOX else os.environ["PADDLE_API_KEY"]
+    base_url = "https://sandbox-api.paddle.com" if IS_SANDBOX else "https://api.paddle.com"
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        res = await client.post(
+            f"{base_url}/subscriptions/{sub_id}/cancel",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"effective_from": "next_billing_period"},
+        )
+
+    if res.status_code not in (200, 202):
+        body = res.json() if res.headers.get("content-type", "").startswith("application/json") else {}
+        # Already scheduled to cancel — treat as success
+        error_code = body.get("error", {}).get("code", "")
+        if "subscription_locked" in error_code or "scheduled_change" in error_code:
+            return {"ok": True, "message": "Subscription is already scheduled for cancellation."}
+        raise HTTPException(500, f"Paddle error {res.status_code}: {res.text}")
+
+    return {"ok": True, "message": "Subscription scheduled for cancellation at end of billing period."}
+
+
+@router.post("/v1/subscriptions/reactivate")
+async def reactivate_subscription(
+    authorization: str | None = Header(default=None),
+):
+    uid = _uid_from_token(authorization)
+
+    from user_service import get_or_create_user
+    user = await get_or_create_user(uid)
+
+    sub_id = getattr(user, "paddle_subscription_id", None)
+    if not sub_id:
+        raise HTTPException(400, "No subscription found.")
+
+    if not user.is_premium:
+        raise HTTPException(400, "No active subscription to reactivate.")
+
+    api_key = os.environ["PADDLE_SANDBOX_API_KEY"] if IS_SANDBOX else os.environ["PADDLE_API_KEY"]
+    base_url = "https://sandbox-api.paddle.com" if IS_SANDBOX else "https://api.paddle.com"
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        res = await client.patch(
+            f"{base_url}/subscriptions/{sub_id}",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"scheduled_change": None},
+        )
+
+    print(f"[reactivate] status={res.status_code} body={res.text}")
+
+    if res.status_code not in (200, 202, 204):
+        raise HTTPException(500, f"Paddle error {res.status_code}: {res.text}")
+
+    return {"ok": True, "message": "Subscription reactivated."}

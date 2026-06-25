@@ -4,7 +4,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { initializePaddle } from "@paddle/paddle-js";
@@ -14,6 +14,12 @@ export default function PremiumPage() {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL!;
     const [isPremium, setIsPremium] = useState(false);
     const [checking, setChecking] = useState(true);
+
+    const searchParams = useSearchParams();
+    const isReactivate = searchParams.get("reactivate") === "true";
+    const [reactivating, setReactivating] = useState(false);
+    const [reactivated, setReactivated] = useState(false);
+    const [reactivateError, setReactivateError] = useState<string | null>(null);
 
     useEffect(() => {
         const unsub = onAuthStateChanged(auth, async (user) => {
@@ -25,6 +31,32 @@ export default function PremiumPage() {
         });
         return () => unsub();
     }, []);
+
+
+    useEffect(() => {
+        if (!isReactivate || checking) return;
+
+        async function doReactivate() {
+            setReactivating(true);
+            try {
+                const token = await auth.currentUser?.getIdToken();
+                const res = await fetch(`${apiUrl}/v1/subscriptions/reactivate`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+                    },
+                });
+                if (!res.ok) throw new Error(await res.text());
+                setReactivated(true);
+            } catch (e: any) {
+                setReactivateError(e?.message || "Failed to reactivate.");
+            } finally {
+                setReactivating(false);
+            }
+        }
+        doReactivate();
+    }, [isReactivate, checking]);
 
 
     const handleCheckout = async (plan: "monthly" | "yearly") => {
@@ -68,8 +100,62 @@ export default function PremiumPage() {
             </main>
         );
     }
-
     if (isPremium) {
+        // Reactivating state
+        if (reactivating) {
+            return (
+                <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center">
+                    <div className="text-center">
+                        <div className="animate-spin w-8 h-8 border-2 border-teal-400 border-t-transparent rounded-full mx-auto mb-4" />
+                        <p className="text-white/50 text-sm">Reactivating your subscription…</p>
+                    </div>
+                </main>
+            );
+        }
+
+        // Reactivated success state
+        if (reactivated) {
+            return (
+                <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center px-6">
+                    <div className="max-w-md w-full text-center">
+                        <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-teal-500/20 border border-teal-400/30">
+                            <span className="text-4xl">⚡</span>
+                        </div>
+                        <h1 className="text-3xl font-bold">You're back!</h1>
+                        <p className="mt-3 text-white/60">
+                            Your Premium subscription is active again. You won't be charged anything extra.
+                        </p>
+                        <button
+                            type="button"
+                            onClick={() => router.push("/")}
+                            className="mt-8 w-full rounded-full bg-linear-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
+                        >
+                            Back to chat
+                        </button>
+                    </div>
+                </main>
+            );
+        }
+
+        // Reactivate error
+        if (reactivateError) {
+            return (
+                <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center px-6">
+                    <div className="max-w-md w-full text-center">
+                        <p className="text-red-400 text-sm mb-4">{reactivateError}</p>
+                        <button
+                            type="button"
+                            onClick={() => router.push("/")}
+                            className="rounded-full border border-white/10 px-4 py-2 text-sm text-white/70 hover:text-white"
+                        >
+                            Back to chat
+                        </button>
+                    </div>
+                </main>
+            );
+        }
+
+        // Already premium (no reactivate param)
         return (
             <main className="min-h-screen bg-[#1f1f1f] text-white flex items-center justify-center px-6">
                 <div className="max-w-md w-full text-center">
