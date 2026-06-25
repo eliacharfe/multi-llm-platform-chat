@@ -59,7 +59,7 @@ async def create_checkout_session(
     if not product_id:
         raise HTTPException(400, f"Invalid plan: {body.plan}")
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         res = await client.post(
             f"{POLAR_BASE_URL}/v1/checkouts",
             headers={
@@ -77,6 +77,7 @@ async def create_checkout_session(
         )
 
     if not res.is_success:
+        print(f"[polar] checkout error: {res.status_code} {res.text}")
         raise HTTPException(500, f"Polar error {res.status_code}: {res.text}")
 
     data = res.json()
