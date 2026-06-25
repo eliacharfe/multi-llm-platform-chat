@@ -132,9 +132,17 @@ export default function TermsPage() {
               </a>
             </p>
             <p className="mt-2">
-              MultiLLM is operated by Eliachar Feig, based in Israel.
+              MultiLLM is operated by{" "}
+              <a href="https://www.eliacharfeig.com/" target="_blank" rel="noreferrer" className="text-teal-400 hover:underline">
+                Eliachar Feig
+              </a>
+              , based in Israel.
             </p>
           </section>
+
+          <p className="mt-12 pt-6 border-t border-white/10 text-sm text-white/30 text-center">
+            © {new Date().getFullYear()} MultiLLM. All rights reserved.
+          </p>
 
         </div>
       </div>

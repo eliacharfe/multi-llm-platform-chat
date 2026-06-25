@@ -274,6 +274,7 @@ const Composer = forwardRef<ComposerHandle, {
 
                 <div className="mt-1 text-center text-xs text-gray-500">
                     Multi-LLM Platform •{" "}
+                    © {new Date().getFullYear()} MultiLLM. All rights reserved. •{" "}
                     <a
                         href="https://www.eliacharfeig.com/"
                         target="_blank"
