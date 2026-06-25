@@ -292,7 +292,7 @@ export default function CancelSubscriptionPage() {
 
                                 <p className="text-center text-[11px] text-gray-600 mt-4 leading-relaxed">
                                     Need help?{" "}
-                                    <a href="mailto:multillm.support@gmail.com" className="text-gray-500 hover:text-gray-400 underline underline-offset-2 transition-colors">
+                                    <a href="mailto:support@multillm.net" className="text-gray-500 hover:text-gray-400 underline underline-offset-2 transition-colors">
                                         Contact support
                                     </a>
                                 </p>
