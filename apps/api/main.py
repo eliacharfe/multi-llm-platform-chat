@@ -31,7 +31,7 @@ import secrets
 from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
 from fastapi import Request
 import httpx
-from billing import router as billing_router
+from polar_billing import router as billing_router
 from user_service import check_and_increment_usage, get_or_create_user, PREMIUM_MODELS
 
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
