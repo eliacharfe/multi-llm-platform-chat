@@ -103,8 +103,8 @@ export default function PrivacyPage() {
             </ul>
             <p className="mt-3">
               To exercise any of these rights, email us at{" "}
-              <a href="mailto:support@multillm.net" className="text-teal-400 hover:underline">
-                support@multillm.net
+              <a href="mailto:multillm.support@gmail.com" className="text-teal-400 hover:underline">
+                multillm.support@gmail.com
               </a>
             </p>
           </section>
@@ -139,8 +139,8 @@ export default function PrivacyPage() {
             <h2 className="text-xl font-semibold text-white mb-3">10. Contact</h2>
             <p>
               Questions or requests about your privacy? Email us at{" "}
-              <a href="mailto:support@multillm.net" className="text-teal-400 hover:underline">
-                support@multillm.net
+              <a href="mailto:multillm.support@gmail.com" className="text-teal-400 hover:underline">
+                multillm.support@gmail.com
               </a>
             </p>
           </section>
