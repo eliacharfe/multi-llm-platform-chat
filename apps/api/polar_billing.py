@@ -127,37 +127,49 @@ async def polar_webhook(request: Request):
     event_type = payload.get("type", "")
     data = payload.get("data", {})
 
-    print(f"[polar webhook] event={event_type}")
+    print(f"[polar webhook] event={event_type} data_keys={list(data.keys())}")
 
     metadata = data.get("metadata") or {}
     firebase_uid = metadata.get("firebase_uid")
+    print(f"[polar webhook] metadata={metadata} firebase_uid_from_metadata={firebase_uid}")
 
     # For subscription events, metadata may be on the checkout
     if not firebase_uid:
         checkout = data.get("checkout") or {}
-        firebase_uid = (checkout.get("metadata") or {}).get("firebase_uid")
+        checkout_metadata = (checkout.get("metadata") or {})
+        firebase_uid = checkout_metadata.get("firebase_uid")
+        print(f"[polar webhook] checkout_metadata={checkout_metadata} firebase_uid_from_checkout={firebase_uid}")
 
     if not firebase_uid:
-        # Try customer metadata
         customer = data.get("customer") or {}
-        firebase_uid = (customer.get("metadata") or {}).get("firebase_uid")
+        customer_metadata = (customer.get("metadata") or {})
+        firebase_uid = customer_metadata.get("firebase_uid")
+        print(f"[polar webhook] customer_metadata={customer_metadata} firebase_uid_from_customer={firebase_uid}")
+
+    print(f"[polar webhook] final firebase_uid={firebase_uid}")
 
     if event_type == "subscription.active":
         sub_id = data.get("id")
+        print(f"[polar webhook] subscription.active sub_id={sub_id} firebase_uid={firebase_uid}")
         if firebase_uid:
             await _set_premium(firebase_uid, True, polar_subscription_id=sub_id)
+        else:
+            print(f"[polar webhook] ⚠️ subscription.active — no firebase_uid, skipping premium grant")
 
     elif event_type == "subscription.canceled":
+        print(f"[polar webhook] subscription.canceled firebase_uid={firebase_uid}")
         if firebase_uid:
             await _set_premium(firebase_uid, False)
 
     elif event_type == "subscription.revoked":
+        print(f"[polar webhook] subscription.revoked firebase_uid={firebase_uid}")
         if firebase_uid:
             await _set_premium(firebase_uid, False)
 
     elif event_type == "subscription.updated":
         status = data.get("status", "")
         sub_id = data.get("id")
+        print(f"[polar webhook] subscription.updated status={status} sub_id={sub_id} firebase_uid={firebase_uid}")
         if firebase_uid:
             if status == "active":
                 await _set_premium(firebase_uid, True, polar_subscription_id=sub_id)
@@ -183,20 +195,29 @@ async def cancel_subscription(
     uid = _uid_from_token(authorization)
     user = await get_or_create_user(uid)
 
-    sub_id = getattr(user, "paddle_subscription_id", None)  # reusing same field
+    sub_id = getattr(user, "paddle_subscription_id", None)
+    print(f"[cancel] uid={uid} is_premium={user.is_premium} sub_id={sub_id}")
+
     if not sub_id:
+        print(f"[cancel] ❌ no subscription id found for uid={uid}")
         raise HTTPException(400, "No active subscription found.")
     if not user.is_premium:
+        print(f"[cancel] ❌ user not premium uid={uid}")
         raise HTTPException(400, "No active premium subscription.")
 
-    async with httpx.AsyncClient(timeout=15) as client:
+    url = f"{POLAR_BASE_URL}/v1/subscriptions/{sub_id}/cancel"
+    print(f"[cancel] calling Polar: POST {url}")
+
+    async with httpx.AsyncClient(timeout=15, follow_redirects=True) as client:
         res = await client.post(
-            f"{POLAR_BASE_URL}/v1/subscriptions/{sub_id}/cancel",
+            url,
             headers={
                 "Authorization": f"Bearer {POLAR_ACCESS_TOKEN}",
                 "Content-Type": "application/json",
             },
         )
+
+    print(f"[cancel] Polar response: status={res.status_code} body={res.text[:300]}")
 
     if res.status_code not in (200, 202, 204):
         raise HTTPException(500, f"Polar error {res.status_code}: {res.text}")
