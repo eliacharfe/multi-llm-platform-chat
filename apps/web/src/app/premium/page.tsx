@@ -81,7 +81,7 @@ export default function PremiumPage() {
                     <button
                         type="button"
                         onClick={() => router.push("/")}
-                        className="mt-8 w-full rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
+                        className="mt-8 w-full rounded-full bg-linear-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
                     >
                         Back to chat
                     </button>
@@ -123,7 +123,7 @@ export default function PremiumPage() {
                         <button
                             type="button"
                             onClick={() => handleCheckout("monthly")}
-                            className="mt-6 w-full rounded-full bg-gradient-to-r from-yellow-300 to-amber-500 px-6 py-3 font-semibold text-black"
+                            className="mt-6 w-full rounded-full bg-linear-to-r from-yellow-300 to-amber-500 px-6 py-3 font-semibold text-black"
                         >
                             Choose Monthly
                         </button>
@@ -149,7 +149,7 @@ export default function PremiumPage() {
                         <button
                             type="button"
                             onClick={() => handleCheckout("yearly")}
-                            className="mt-6 w-full rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
+                            className="mt-6 w-full rounded-full bg-linear-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
                         >
                             Choose Yearly
                         </button>

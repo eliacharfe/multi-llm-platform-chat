@@ -112,20 +112,23 @@ export default function Page() {
 
   async function fetchMe(user: User) {
     try {
-      console.log("[fetchMe] uid:", user.uid);  // ← add this
+      // Check Firebase claims first (works even before DB is synced)
+      const tokenResult = await user.getIdTokenResult(true);
+      const claimsPremium = !!tokenResult.claims?.premium;
+
       const token = await user.getIdToken();
       const res = await fetch(`${apiUrl}/v1/me`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (res.ok) {
         const data = await res.json();
-        console.log("[fetchMe] data:", data);
-        setIsPremium(!!data.is_premium);
+        // Use either DB or Firebase claims
+        setIsPremium(!!data.is_premium || claimsPremium);
       } else {
-        console.log("[fetchMe] failed:", res.status);
+        setIsPremium(claimsPremium);
       }
-    } catch (e) {
-      console.log("[fetchMe] error:", e);
+    } catch {
+      // ignore
     }
   }
 
@@ -952,13 +955,13 @@ export default function Page() {
                   className={[
                     "hidden sm:block",
                     "rounded-full px-4 py-2 text-sm font-semibold",
-                    "bg-gradient-to-r from-yellow-300 to-amber-500",
+                    "bg-linear-to-r from-yellow-300 to-amber-500",
                     "text-black shadow-sm",
                     "transition hover:scale-[1.03] hover:shadow-md",
                     "active:scale-[0.98]",
                   ].join(" ")}
                 >
-                  Premium
+                  Go Premium
                 </button>
               )}
             </div>

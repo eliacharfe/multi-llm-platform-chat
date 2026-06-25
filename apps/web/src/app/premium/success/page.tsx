@@ -62,7 +62,7 @@ export default function PremiumSuccessPage() {
                 <button
                     type="button"
                     onClick={() => router.push("/")}
-                    className="mt-8 w-full rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
+                    className="mt-8 w-full rounded-full bg-linear-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
                 >
                     Start chatting
                 </button>

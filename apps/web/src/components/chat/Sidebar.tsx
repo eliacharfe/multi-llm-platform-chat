@@ -186,7 +186,7 @@ export default function Sidebar({
                             ) : (
                                 <a
                                     href="/premium"
-                                    className="w-full rounded-full bg-gradient-to-r from-yellow-300 to-amber-500 px-4 py-2 text-sm font-semibold text-black text-center"
+                                    className="w-full rounded-full bg-linear-to-r from-yellow-300 to-amber-500 px-4 py-2 text-sm font-semibold text-black text-center"
                                 >
                                     ⚡ Upgrade to Premium
                                 </a>
