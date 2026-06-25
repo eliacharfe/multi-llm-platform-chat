@@ -178,7 +178,7 @@ export default function Sidebar({
                     {/* Top actions */}
                     <div className="flex flex-col gap-3 shrink-0">
 
-                        {isSmall && (
+                        {isSmall && isAuthed && (
                             isPremium ? (
                                 <div className="w-full flex items-center justify-between rounded-full bg-teal-500/20 border border-teal-400/30 px-4 py-2 text-sm font-semibold text-teal-300">
                                     <span>⚡ Premium</span>

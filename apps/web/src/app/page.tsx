@@ -956,7 +956,7 @@ export default function Page() {
                     Cancel subscription
                   </a> */}
                 </div>
-              ) : (
+              ) : isAuthed ? (
                 <button
                   type="button"
                   onClick={() => router.push("/premium")}
@@ -971,7 +971,7 @@ export default function Page() {
                 >
                   Go Premium
                 </button>
-              )}
+              ) : null}
             </div>
             {/* chat scroller */}
             <div
