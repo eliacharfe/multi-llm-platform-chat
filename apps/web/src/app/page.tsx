@@ -949,12 +949,12 @@ export default function Page() {
                   ].join(" ")}>
                     ⚡ Premium
                   </span>
-                  <a
+                  {/* <a
                     href="/premium/cancel"
                     className="text-xs text-gray-400 hover:text-red-400 transition underline underline-offset-2"
                   >
                     Cancel subscription
-                  </a>
+                  </a> */}
                 </div>
               ) : (
                 <button
