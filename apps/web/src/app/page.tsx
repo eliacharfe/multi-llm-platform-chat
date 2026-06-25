@@ -930,6 +930,7 @@ export default function Page() {
                   onEditMessage={editMessage}
                   onShare={activeChatId ? shareChat : undefined}
                   isShareLoading={shareLoading}
+                  apiUrl={apiUrl}
                 />
               </div>
             </div>

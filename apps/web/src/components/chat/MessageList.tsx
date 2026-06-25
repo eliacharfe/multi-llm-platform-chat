@@ -10,6 +10,7 @@ import "@/lib/prism";
 
 import CopyButton from "@/components/ui/CopyButton";
 import ActionButton from "@/components/ui/ActionButton";
+import { useReadAloud } from "@/hooks/useReadAloud";
 
 export type Msg = { role: "user" | "assistant" | "system"; content: string; isError?: boolean; modelSwitch?: string };
 
@@ -64,6 +65,7 @@ export default function MessageList({
     onEditMessage,
     onShare,
     isShareLoading,
+    apiUrl,
 }: {
     messages: Msg[];
     isStreaming: boolean;
@@ -75,10 +77,13 @@ export default function MessageList({
     onEditMessage: (idx: number, newContent: string) => void;
     onShare?: () => void;
     isShareLoading?: boolean;
+    apiUrl: string;
 }) {
 
     const [editingIdx, setEditingIdx] = useState<number | null>(null);
     const [editDraft, setEditDraft] = useState("");
+
+    const { speak, stop, togglePause, speakingIdx, isLoading, isPaused } = useReadAloud(apiUrl);
 
     const suggestions = [
         {
@@ -98,8 +103,6 @@ export default function MessageList({
             s: "When to choose each in real projects",
         },
     ];
-
-
 
     if (messages.length === 0) {
         return (
@@ -183,7 +186,6 @@ export default function MessageList({
                                     style={{ unicodeBidi: isRTL ? "plaintext" : "normal" }}
                                 >
                                     {editingIdx === idx ? (
-                                        // EDIT MODE
                                         <div className="flex flex-col gap-2">
                                             <textarea
                                                 className="w-full rounded-2xl border border-blue-500/50 bg-[#1e1e1e] px-4 py-3 text-sm text-gray-100 leading-relaxed resize-none focus:outline-none focus:ring-1 focus:ring-blue-500/50"
@@ -220,7 +222,6 @@ export default function MessageList({
                                             </div>
                                         </div>
                                     ) : (
-                                        // VIEW MODE — your existing bubble unchanged
                                         <>
                                             <div className={[
                                                 "rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm",
@@ -246,7 +247,6 @@ export default function MessageList({
                                     )}
                                 </div>
                             ) : (
-
                                 <div className="w-full max-w-3xl">
                                     <div
                                         dir={dir}
@@ -271,6 +271,13 @@ export default function MessageList({
                                                     <span>{thinkingLabel}</span>
                                                 </div>
                                             )}
+
+                                        {isAssistant && speakingIdx === String(idx) && (
+                                            <div className={["flex items-center gap-2 mb-2 text-xs", isPaused ? "text-yellow-400" : "text-blue-400"].join(" ")}>
+                                                {isPaused ? <span>⏸</span> : <span className="animate-pulse">●</span>}
+                                                <span>{isPaused ? "Paused" : "Reading aloud…"}</span>
+                                            </div>
+                                        )}
 
                                         {m.content?.length ? (
                                             isAssistant && m.isError ? (
@@ -308,7 +315,6 @@ export default function MessageList({
                                                                             )}
                                                                             <CopyButton text={raw} className="bg-black/30" title="Copy code" />
                                                                         </div>
-
                                                                         <pre
                                                                             dir="ltr"
                                                                             className="bg-[#1e1e1e] border border-white/10 rounded-xl p-4 pt-10 overflow-x-auto max-w-full text-sm"
@@ -342,36 +348,80 @@ export default function MessageList({
 
                                     {isAssistant &&
                                         (m.content?.length ?? 0) > 0 &&
-                                        idx === messages.length - 1 &&
-                                        !isStreaming &&
                                         !m.isError ? (
                                         <div className={["mt-2 flex items-center gap-2", isRTL ? "justify-end" : "justify-start"].join(" ")}>
-                                            <CopyButton
-                                                text={conversationText}
-                                                title="Copy conversation"
-                                            />
-                                            <ActionButton
-                                                label="Retry"
-                                                title="Try again"
-                                                onClick={onRetry}
-                                            />
-                                            {/* <ActionButton
-                                                label="Share"
-                                                title="Share conversation"
-                                                onClick={onShare}
-                                                disabled={isShareLoading}
-                                            /> */}
-                                            {onShare && (
-                                                <ActionButton
-                                                    label={isShareLoading ? "…" : "Share"}
-                                                    title="Share conversation"
-                                                    onClick={onShare}
-                                                    disabled={isShareLoading}
-                                                />
+                                            {idx === messages.length - 1 && !isStreaming && (
+                                                <>
+                                                    <CopyButton text={conversationText} title="Copy conversation" />
+                                                    <ActionButton label="Retry" title="Try again" onClick={onRetry} />
+                                                    {onShare && (
+                                                        <ActionButton
+                                                            label={isShareLoading ? "…" : "Share"}
+                                                            title="Share conversation"
+                                                            onClick={onShare}
+                                                            disabled={isShareLoading}
+                                                        />
+                                                    )}
+                                                </>
+                                            )}
+                                            <button
+                                                type="button"
+                                                title={
+                                                    isLoading && speakingIdx === String(idx) ? "Loading…"
+                                                        : speakingIdx === String(idx) && isPaused ? "Resume"
+                                                            : speakingIdx === String(idx) ? "Pause"
+                                                                : "Read aloud"
+                                                }
+                                                onClick={() => {
+                                                    if (speakingIdx === String(idx) && !isPaused) {
+                                                        togglePause();
+                                                    } else {
+                                                        speak(m.content, String(idx));
+                                                    }
+                                                }}
+                                                disabled={isLoading && speakingIdx !== String(idx)}
+                                                className={[
+                                                    "inline-flex items-center gap-1.5 rounded-lg border px-2 py-1 text-xs transition",
+                                                    speakingIdx === String(idx) && !isPaused
+                                                        ? "border-blue-500/40 bg-blue-500/20 text-blue-400"
+                                                        : speakingIdx === String(idx) && isPaused
+                                                            ? "border-yellow-500/40 bg-yellow-500/10 text-yellow-400"
+                                                            : isLoading
+                                                                ? "border-white/10 bg-white/5 text-gray-600 cursor-wait"
+                                                                : "border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200",
+                                                ].join(" ")}
+                                            >
+                                                {isLoading && speakingIdx === String(idx) ? (
+                                                    <>
+                                                        <span className="animate-spin inline-block">⏳</span>
+                                                        <span>Loading…</span>
+                                                    </>
+                                                ) : speakingIdx === String(idx) && isPaused ? (
+                                                    <>
+                                                        <span>▶</span>
+                                                        <span>Resume</span>
+                                                    </>
+                                                ) : speakingIdx === String(idx) ? (
+                                                    <>
+                                                        <span className="animate-pulse">●</span>
+                                                        <span>Pause</span>
+                                                    </>
+                                                ) : (
+                                                    <span>🔊</span>
+                                                )}
+                                            </button>
+                                            {speakingIdx === String(idx) && (
+                                                <button
+                                                    type="button"
+                                                    title="Stop"
+                                                    onClick={stop}
+                                                    className="inline-flex items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-gray-400 hover:bg-white/10 transition"
+                                                >
+                                                    ■ Stop
+                                                </button>
                                             )}
                                         </div>
                                     ) : null}
-
                                 </div>
                             )}
                         </div>

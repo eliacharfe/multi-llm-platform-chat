@@ -28,6 +28,9 @@ import firebase_admin
 from firebase_admin import credentials, auth as fb_auth
 
 import secrets
+from fastapi.responses import StreamingResponse as FastAPIStreamingResponse
+from fastapi import Request
+import httpx
 
 from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
 
@@ -1426,3 +1429,49 @@ async def chat_stream_with_files(
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 
+
+@app.post("/v1/audio/speak")
+async def speak(
+    request: Request,
+    authorization: str | None = Header(default=None),
+):
+    user_id = require_user_id_from_auth(authorization)
+    body = await request.json()
+    text = (body.get("text") or "").strip()
+    voice = body.get("voice", "nova")
+
+    if not text:
+        raise HTTPException(400, "text is required")
+
+    if len(text) > 4096:
+        text = text[:4096]
+
+    openai_key = os.getenv("OPENAI_API_KEY")
+    if not openai_key:
+        raise HTTPException(500, "OpenAI API key not configured")
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        response = await client.post(
+            "https://api.openai.com/v1/audio/speech",
+            headers={
+                "Authorization": f"Bearer {openai_key}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "tts-1",
+                "input": text,
+                "voice": voice,
+                "response_format": "mp3",
+            },
+        )
+
+        if response.status_code != 200:
+            raise HTTPException(502, f"OpenAI TTS error: {response.text}")
+
+        audio_bytes = response.content
+
+    return FastAPIStreamingResponse(
+        iter([audio_bytes]),
+        media_type="audio/mpeg",
+        headers={"Content-Disposition": "inline; filename=speech.mp3"},
+    )

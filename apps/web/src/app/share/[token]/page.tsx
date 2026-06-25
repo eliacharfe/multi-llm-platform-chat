@@ -63,6 +63,7 @@ export default function SharedChatPage() {
                     conversationText=""
                     onRetry={() => { }}
                     onEditMessage={() => { }}
+                    apiUrl={apiUrl}
                 />
             </div>
         </main>
