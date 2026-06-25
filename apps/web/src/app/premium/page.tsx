@@ -203,6 +203,7 @@ function PremiumPageInner() {
                         <ul className="mt-6 space-y-2 text-sm text-white/70">
                             <li>• Full premium AI model access</li>
                             <li>• Higher usage limits</li>
+                            <li>• 8,192 token context window (4× more)</li>
                             <li>• Cancel anytime</li>
                             <li>• No hidden fees</li>
                         </ul>
@@ -229,6 +230,7 @@ function PremiumPageInner() {
                         <ul className="mt-6 space-y-2 text-sm text-white/70">
                             <li>• Full premium AI model access</li>
                             <li>• Higher usage limits</li>
+                            <li>• 8,192 token context window (4× more)</li>
                             <li>• Cancel anytime</li>
                             <li>• No hidden fees</li>
                         </ul>

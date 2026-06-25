@@ -32,6 +32,11 @@ const BENEFITS = [
         desc: "Attach PDFs, code, images to any chat",
     },
     {
+        icon: "🧠",
+        title: "Extended context window",
+        desc: "8,192 tokens — 4× more than free",
+    },
+    {
         icon: "⚡",
         title: "Priority speed",
         desc: "Faster responses during peak hours",
@@ -209,8 +214,9 @@ export default function CancelSubscriptionPage() {
                             <div className="space-y-2">
                                 {[
                                     "20 messages per day",
-                                    "3 models only (Gemini Flash, GPT-4o mini, Llama)",
+                                    "Less powerful models",
                                     "No file or image uploads",
+                                    "2,048 token context window only",
                                 ].map((line) => (
                                     <div key={line} className="flex items-center gap-2.5 text-sm text-gray-400">
                                         <svg className="w-4 h-4 text-gray-600 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

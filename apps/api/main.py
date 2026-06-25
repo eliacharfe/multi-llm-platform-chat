@@ -220,6 +220,9 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = None
 
 
+def get_max_tokens(is_premium: bool) -> int:
+    return 8192 if is_premium else 2048
+
 def sse(payload: Dict[str, Any]) -> str:
     return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
 
@@ -478,6 +481,7 @@ def anthropic_stream(
     model_name: str,
     req: ChatRequest,
     images: List[Dict[str, str]] | None = None,
+    is_premium: bool = False,
 ):
     images = images or []
 
@@ -489,7 +493,7 @@ def anthropic_stream(
 
     kwargs: Dict[str, Any] = {
         "model": model_name,
-        "max_tokens": 2048,
+        "max_tokens": get_max_tokens(is_premium),
         "temperature": temp,
         "messages": messages_for_claude,
     }
@@ -532,7 +536,7 @@ def build_openai_responses_input(req: ChatRequest, images: list[dict]):
     out[last_user_idx]["content"] = parts
     return out
 
-def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list[dict] | None = None):
+def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list[dict] | None = None, is_premium: bool = False):
     images = images or []
     client = get_openai_compatible_client(provider)
     provider_model = req.model
@@ -611,11 +615,11 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list
         print(f"[openai_stream] ⚠️ temperature skipped (unsupported for {model_name})")
 
     try:
-        stream = client.chat.completions.create(**kwargs, max_completion_tokens=2048)
+        stream = client.chat.completions.create(**kwargs, max_completion_tokens=get_max_tokens(is_premium))
         print(f"[openai_stream] stream created with max_completion_tokens=2048")
     except TypeError as e:
         print(f"[openai_stream] max_completion_tokens failed ({e}), retrying with max_tokens")
-        stream = client.chat.completions.create(**kwargs, max_tokens=2048)
+        stream = client.chat.completions.create(**kwargs, max_tokens=get_max_tokens(is_premium))
         print(f"[openai_stream] stream created with max_tokens=2048")
     except Exception as e:
         import traceback
@@ -692,7 +696,7 @@ def _extract_delta_text(delta_obj: Any) -> str | None:
     return None
 
 
-def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]] | None = None):
+def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]] | None = None, is_premium: bool = False):
     images = images or []
     client = get_gemini_client()
     temp = get_temperature(req.model, req.temperature)
@@ -702,7 +706,7 @@ def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]
         stream = client.models.generate_content_stream(
             model=model_name,
             contents=prompt,
-            config={"temperature": temp},
+            config={"temperature": temp, "max_output_tokens": get_max_tokens(is_premium)},  # ADD
         )
         for chunk in stream:
             text = getattr(chunk, "text", None)
@@ -713,7 +717,7 @@ def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]
 
     system_text, contents = build_gemini_contents_with_images(req.messages, images)
 
-    cfg: Dict[str, Any] = {"temperature": temp}
+    cfg: Dict[str, Any] = {"temperature": temp, "max_output_tokens": get_max_tokens(is_premium)}  # ADD
     if system_text:
         cfg["system_instruction"] = system_text
 
@@ -1176,20 +1180,22 @@ async def chat_stream_with_files(
             media_type="text/event-stream",
         )
 
-    # ── Premium model gate ──────────────────────────────────────────────────
-    if model in PREMIUM_MODELS:
-        user = await get_or_create_user(user_id)
-        if not user.is_premium:
-            return StreamingResponse(
-                iter([
-                    sse({
-                        "error": "This model requires a Premium subscription.",
-                        "error_short": "Premium model. Upgrade to access."
-                    }),
-                    sse({"done": True})
-                ]),
-                media_type="text/event-stream",
-            )
+    # ── Always load user + premium status ──────────────────────────────────
+    user = await get_or_create_user(user_id)
+    is_premium = user.is_premium
+
+    # ── Premium model gate ─────────────────────────────────────────────────
+    if model in PREMIUM_MODELS and not is_premium:
+        return StreamingResponse(
+            iter([
+                sse({
+                    "error": "This model requires a Premium subscription.",
+                    "error_short": "Premium model. Upgrade to access."
+                }),
+                sse({"done": True})
+            ]),
+            media_type="text/event-stream",
+        )
 
     # ── Usage limit gate (free users only) ─────────────────────────────────
     if not retry:
@@ -1233,7 +1239,7 @@ async def chat_stream_with_files(
     # -------------------------------------------------------------------------
     # DB: load chat, handle retry vs normal, persist user/assistant rows
     # -------------------------------------------------------------------------
-    previous_assistant_content: str = ""  
+    previous_assistant_content: str = ""
 
     async with SessionLocal() as session:
         chat = (await session.execute(
@@ -1374,7 +1380,6 @@ async def chat_stream_with_files(
                     yield sse({"done": True})
                     return
 
-
                 if not retry and req_msgs:
                     history = [
                         ChatMsg(role=m.role, content=m.content)
@@ -1426,13 +1431,13 @@ async def chat_stream_with_files(
 
             def sync_iter():
                 if provider in ("openai", "openrouter", "groq", "nebius"):
-                    yield from openai_stream(provider, model_name, llm_req, images=images)
+                    yield from openai_stream(provider, model_name, llm_req, images=images, is_premium=is_premium)
                     return
                 if provider == "anthropic":
-                    yield from anthropic_stream(model_name, llm_req, images=images)
+                    yield from anthropic_stream(model_name, llm_req, images=images, is_premium=is_premium)
                     return
                 if provider == "gemini":
-                    yield from gemini_stream(model_name, llm_req, images=images)
+                    yield from gemini_stream(model_name, llm_req, images=images, is_premium=is_premium)
                     return
                 raise RuntimeError(f"Unknown provider: {provider}")
 
