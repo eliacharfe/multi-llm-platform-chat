@@ -43,7 +43,6 @@ export default function Page() {
     [getProvider(DEFAULT_MODEL)]: DEFAULT_MODEL,
   }));
 
-  const [showSplash, setShowSplash] = useState(true);
   const [authReady, setAuthReady] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
@@ -157,14 +156,6 @@ export default function Page() {
     if (!authReady) return;
     fetch(`${apiUrl}/health`, { cache: "no-store" }).catch(() => { });
   }, [authReady, apiUrl]);
-
-  useEffect(() => {
-    if (!authReady) return;
-
-    const minMs = 3000;
-    const t = window.setTimeout(() => setShowSplash(false), minMs);
-    return () => window.clearTimeout(t);
-  }, [authReady]);
 
   function setModelAsAuto(nextModel: string) {
     const p = getProvider(nextModel);
@@ -812,10 +803,6 @@ export default function Page() {
   return (
 
     <main className="fixed inset-0 h-dvh w-screen bg-[#252525] text-gray-200 overflow-hidden flex flex-col">
-      <LogoSplash
-        show={showSplash}
-        text={authReady ? "Preparing your workspace…" : "Initializing…"}
-      />
 
       {isDraggingFiles ? (
         <div

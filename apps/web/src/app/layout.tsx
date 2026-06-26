@@ -8,6 +8,7 @@ import "@/lib/prism";
 import { Analytics } from "@vercel/analytics/react";
 import PwaRegister from "@/components/pwa-register";
 import InstallAppPopup from "@/components/install-app-popup";
+import SplashProvider from "@/components/providers/splash-provider";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -90,12 +91,14 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <PwaRegister />
+        <SplashProvider>
+          <PwaRegister />
 
-        {children}
+          {children}
 
-        <Analytics />
-        <InstallAppPopup />
+          <Analytics />
+          <InstallAppPopup />
+        </SplashProvider>
       </body>
     </html>
   );
