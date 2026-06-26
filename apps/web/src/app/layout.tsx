@@ -54,16 +54,16 @@ export const metadata: Metadata = {
   },
 
   openGraph: {
-    title: "Multi-LLM Platform",
+    title: "MultiLLM",
     description:
       "Chat with multiple AI models in one powerful streaming interface.",
     url: "https://multillm.net",
-    siteName: "Multi-LLM Platform",
+    siteName: "MultiLLM",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Multi-LLM Platform",
+    title: "MultiLLM",
     description:
       "A unified AI chat interface for OpenAI, Claude, Gemini, Groq and more.",
   },
