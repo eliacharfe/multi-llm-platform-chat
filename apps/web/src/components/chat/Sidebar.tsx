@@ -254,8 +254,8 @@ export default function Sidebar({
                                             className={[
                                                 "group w-full text-left rounded-lg px-3 py-2 border transition relative",
                                                 active
-                                                    ? "bg-white/10 border-white/15"
-                                                    : "bg-black/10 border-white/10 hover:bg-white/10 hover:border-white/15",
+                                                    ? "bg-teal-500/10 border-teal-500/25"
+                                                    : "bg-black/10 border-white/10 hover:bg-teal-500/8 hover:border-teal-500/25 hover:shadow-[0_0_12px_rgba(20,184,166,0.08)]",
                                             ].join(" ")}
                                         >
                                             <button onClick={() => onOpenChat(c.id)} className="w-full text-left">

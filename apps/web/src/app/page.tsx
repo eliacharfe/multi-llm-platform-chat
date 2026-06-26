@@ -344,12 +344,13 @@ export default function Page() {
     signal: AbortSignal,
     onToken: (t: string) => void,
     onError: (msg: string) => void,
+    onUsage?: (inputTokens: number, outputTokens: number) => void,
   ) {
     const reader = res.body!.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "";
 
-    const process = () => {
+    const processBuffer = () => {
       buffer = buffer.replace(/\r\n/g, "\n");
       while (true) {
         const idx = buffer.indexOf("\n\n");
@@ -361,6 +362,10 @@ export default function Page() {
         let obj: any;
         try { obj = JSON.parse(lines.map(l => l.slice(5).replace(/^\s/, "")).join("\n")); }
         catch { continue; }
+        if (obj._usage || obj.done || (!obj.t)) {
+          console.log("[SSE full obj]", JSON.stringify(obj));
+        }
+        if (obj._usage) { onUsage?.(obj._usage.i ?? 0, obj._usage.o ?? 0); continue; }
         if (obj.done) return true;
         if (obj.error) { onError(String(obj.error_short ?? obj.error ?? "Unknown error")); return true; }
         if (obj.t) onToken(obj.t);
@@ -370,11 +375,15 @@ export default function Page() {
 
     while (true) {
       const { done, value } = await reader.read();
-      if (value) { buffer += decoder.decode(value, { stream: true }); if (process()) break; }
+      if (value) {
+        buffer += decoder.decode(value, { stream: true });
+        console.log("[SSE raw buffer length]", buffer.length); // ADD
+        if (processBuffer()) break;
+      }
       if (done) break;
     }
     buffer += decoder.decode();
-    process();
+    processBuffer();
   }
 
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
@@ -648,6 +657,15 @@ export default function Page() {
             return copy;
           });
         },
+        (inTok, outTok) => {
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === "assistant")
+              copy[copy.length - 1] = { ...last, inputTokens: inTok, outputTokens: outTok };
+            return copy;
+          });
+        },
       );
 
       scrollToBottom(true);
@@ -758,6 +776,15 @@ export default function Page() {
             const last = copy[copy.length - 1];
             if (last?.role === "assistant") copy[copy.length - 1] = { ...last, content: errMsg, isError: true };
             else copy.push({ role: "assistant", content: errMsg, isError: true });
+            return copy;
+          });
+        },
+        (inTok, outTok) => {
+          setMessages(prev => {
+            const copy = [...prev];
+            const last = copy[copy.length - 1];
+            if (last?.role === "assistant")
+              copy[copy.length - 1] = { ...last, inputTokens: inTok, outputTokens: outTok };
             return copy;
           });
         },

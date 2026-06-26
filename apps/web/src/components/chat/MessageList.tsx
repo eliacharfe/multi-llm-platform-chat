@@ -1,5 +1,6 @@
 
 // apps/web/src/components/chat/MessageList.tsx
+
 "use client";
 
 import React, { useState } from "react";
@@ -11,8 +12,16 @@ import "@/lib/prism";
 import CopyButton from "@/components/ui/CopyButton";
 import ActionButton from "@/components/ui/ActionButton";
 import { useReadAloud } from "@/hooks/useReadAloud";
+import { estimateCost, formatCost } from "@/lib/models";
 
-export type Msg = { role: "user" | "assistant" | "system"; content: string; isError?: boolean; modelSwitch?: string };
+export type Msg = {
+    role: "user" | "assistant" | "system";
+    content: string;
+    isError?: boolean;
+    modelSwitch?: string;
+    inputTokens?: number;
+    outputTokens?: number;
+};
 
 function Spinner() {
     return (
@@ -37,6 +46,33 @@ function RetryButton({ onClick }: { onClick: () => void }) {
     );
 }
 
+function TokenBadge({ inputTokens, outputTokens, model }: {
+    inputTokens: number;
+    outputTokens: number;
+    model: string;
+}) {
+    const total = inputTokens + outputTokens;
+    if (!total) return null;
+
+    const cost = estimateCost(model, inputTokens, outputTokens);
+    const costStr = cost > 0 ? formatCost(cost) : null;
+
+    return (
+        <span
+            title={`Input: ${inputTokens.toLocaleString()} · Output: ${outputTokens.toLocaleString()} · Total: ${total.toLocaleString()} tokens`}
+            className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-2 py-1 text-[11px] text-gray-500 hover:text-gray-300 hover:border-white/20 transition cursor-default select-none"
+        >
+            <span>{total.toLocaleString()} tok</span>
+            {costStr && (
+                <>
+                    <span className="opacity-30">·</span>
+                    <span className="text-emerald-600/70">{costStr}</span>
+                </>
+            )}
+        </span>
+    );
+}
+
 function childrenToText(children: React.ReactNode): string {
     if (typeof children === "string") return children;
     if (Array.isArray(children)) return children.map(childrenToText).join("");
@@ -46,11 +82,9 @@ function childrenToText(children: React.ReactNode): string {
 function detectDir(text: string): "rtl" | "ltr" {
     const s = (text || "").trim();
     if (!s) return "ltr";
-
     const rtlChars =
         s.match(/[\u0590-\u05FF\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF]/g)?.length ?? 0;
     const ltrChars = s.match(/[A-Za-z]/g)?.length ?? 0;
-
     return rtlChars > ltrChars ? "rtl" : "ltr";
 }
 
@@ -79,7 +113,6 @@ export default function MessageList({
     isShareLoading?: boolean;
     apiUrl: string;
 }) {
-
     const [editingIdx, setEditingIdx] = useState<number | null>(null);
     const [editDraft, setEditDraft] = useState("");
 
@@ -112,17 +145,13 @@ export default function MessageList({
                         <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
                             <div className="h-40 w-md bg-linear-to-r from-blue-500/20 via-indigo-500/20 to-blue-500/20 blur-3xl rounded-full opacity-60" />
                         </div>
-
                         <div className="relative">
-                            <div className="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight  2xl:pt-30">
-                                {/* <div className="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight lg:pt-10 sm:pt-1 md:pt-5 xl:pt-20 2xl:pt-30"> */}
+                            <div className="text-3xl sm:text-4xl font-semibold text-gray-100 tracking-tight 2xl:pt-30">
                                 Welcome back!
                             </div>
-
                             <div className="mt-2 text-base sm:text-lg text-gray-400">
                                 Choose a model, and ask anything…
                             </div>
-
                             <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
                                 {suggestions.map((x) => (
                                     <button
@@ -131,13 +160,14 @@ export default function MessageList({
                                         onClick={() => onSuggestion(`${x.t}\n${x.s}`)}
                                         className={[
                                             "group cursor-pointer text-left rounded-2xl border border-white/10",
-                                            "bg-white/3 hover:bg-white/6 transition",
+                                            "bg-white/3 hover:bg-teal-500/8 transition",
                                             "px-5 py-4",
                                             "transform-gpu will-change-transform",
                                             "hover:-translate-y-1 hover:scale-[1.02] active:scale-[0.99]",
                                             "duration-200 ease-out",
-                                            "hover:shadow-[0_12px_35px_rgba(0,0,0,0.35)]",
-                                            "hover:ring-1 hover:ring-white/15",
+                                            "hover:shadow-[0_12px_35px_rgba(20,184,166,0.15)]",
+                                            "hover:ring-1 hover:ring-teal-500/25",
+                                            "hover:border-teal-500/30",
                                         ].join(" ")}
                                     >
                                         <div className="text-sm font-medium text-gray-100">{x.t}</div>
@@ -151,8 +181,6 @@ export default function MessageList({
             </div>
         );
     }
-
-
 
     return (
         <div className="space-y-5">
@@ -173,6 +201,8 @@ export default function MessageList({
 
                     const isUser = m.role === "user";
                     const isAssistant = m.role === "assistant";
+                    const isLastMessage = idx === messages.length - 1;
+                    const isThisStreaming = isStreaming && isLastMessage;
 
                     const dir = detectDir(m.content);
                     const isRTL = dir === "rtl";
@@ -224,7 +254,8 @@ export default function MessageList({
                                     ) : (
                                         <>
                                             <div className={[
-                                                "rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm",
+                                                // "rounded-2xl border border-white/10 bg-blue-600/20 px-4 py-3 shadow-sm",
+                                                "rounded-2xl border border-teal-500/20 bg-teal-500/10 px-4 py-3 shadow-sm",
                                                 isRTL ? "text-right" : "text-left",
                                             ].join(" ")}>
                                                 <div className="whitespace-pre-wrap text-sm leading-relaxed text-gray-100">
@@ -263,14 +294,12 @@ export default function MessageList({
                                             "[&_img]:max-w-full",
                                         ].join(" ")}
                                     >
-                                        {isStreaming &&
-                                            idx === messages.length - 1 &&
-                                            (m.content?.length ?? 0) === 0 && (
-                                                <div className="flex items-center gap-3 text-gray-400">
-                                                    <Spinner />
-                                                    <span>{thinkingLabel}</span>
-                                                </div>
-                                            )}
+                                        {isThisStreaming && (m.content?.length ?? 0) === 0 && (
+                                            <div className="flex items-center gap-3 pb-5 text-gray-400">
+                                                <Spinner />
+                                                <span>{thinkingLabel}</span>
+                                            </div>
+                                        )}
 
                                         {isAssistant && speakingIdx === String(idx) && (
                                             <div className={["flex items-center gap-2 mb-2 text-xs", isPaused ? "text-yellow-400" : "text-blue-400"].join(" ")}>
@@ -286,7 +315,7 @@ export default function MessageList({
                                                         <span className="mt-0.5" aria-hidden="true">⚠️</span>
                                                         <span>{m.content}</span>
                                                     </div>
-                                                    {idx === messages.length - 1 && !isStreaming && (
+                                                    {isLastMessage && !isStreaming && (
                                                         <div className="mt-3">
                                                             <RetryButton onClick={onRetry} />
                                                         </div>
@@ -346,11 +375,9 @@ export default function MessageList({
                                         ) : null}
                                     </div>
 
-                                    {isAssistant &&
-                                        (m.content?.length ?? 0) > 0 &&
-                                        !m.isError ? (
-                                        <div className={["mt-2 flex items-center gap-2", isRTL ? "justify-end" : "justify-start"].join(" ")}>
-                                            {idx === messages.length - 1 && !isStreaming && (
+                                    {isAssistant && (m.content?.length ?? 0) > 0 && !m.isError ? (
+                                        <div className={["mt-2 flex items-center gap-2 flex-wrap", isRTL ? "justify-end" : "justify-start"].join(" ")}>
+                                            {isLastMessage && !isStreaming && (
                                                 <>
                                                     <CopyButton text={conversationText} title="Copy conversation" />
                                                     <ActionButton label="Retry" title="Try again" onClick={onRetry} />
@@ -364,6 +391,7 @@ export default function MessageList({
                                                     )}
                                                 </>
                                             )}
+
                                             <button
                                                 type="button"
                                                 title={
@@ -410,6 +438,7 @@ export default function MessageList({
                                                     <span>🔊</span>
                                                 )}
                                             </button>
+
                                             {speakingIdx === String(idx) && (
                                                 <button
                                                     type="button"
@@ -420,6 +449,15 @@ export default function MessageList({
                                                     ■ Stop
                                                 </button>
                                             )}
+
+                                            {/* Token badge — shows after streaming completes */}
+                                            {!isThisStreaming && (m.inputTokens || m.outputTokens) ? (
+                                                <TokenBadge
+                                                    inputTokens={m.inputTokens ?? 0}
+                                                    outputTokens={m.outputTokens ?? 0}
+                                                    model={model}   // ADD
+                                                />
+                                            ) : null}
                                         </div>
                                     ) : null}
                                 </div>

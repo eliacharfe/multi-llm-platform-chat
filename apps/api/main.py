@@ -23,6 +23,7 @@ from sqlalchemy.orm import selectinload
 from db import SessionLocal
 from sqlalchemy import text
 from fastapi import UploadFile, File, Form, Header, HTTPException
+from sqlalchemy import func
 
 import firebase_admin
 from firebase_admin import credentials, auth as fb_auth
@@ -34,7 +35,7 @@ import httpx
 from polar_billing import router as billing_router
 from user_service import check_and_increment_usage, get_or_create_user, PREMIUM_MODELS
 
-from db import SessionLocal, init_db, Chat as ChatRow, Message as MessageRow, utcnow
+from db import SessionLocal, init_db, Chat as ChatRow, UsageLog, Message as MessageRow, utcnow
 
 import openai, inspect
 print("OPENAI_VERSION =", getattr(openai, "__version__", "unknown"))
@@ -115,7 +116,6 @@ MODEL_OPTIONS = [
     "openrouter:x-ai/grok-4.3",
     "openrouter:openai/gpt-4o-mini",
     "openrouter:mistralai/mistral-large-2512",
-    # "groq:llama-3.1-8b-instant",
     "groq:openai/gpt-oss-20b",
     "groq:llama-3.3-70b-versatile",
     "anthropic:claude-haiku-4-5",
@@ -149,7 +149,6 @@ TEMPERATURE_BY_MODEL: Dict[str, float] = {
     "openrouter:x-ai/grok-4.3": 0.7,
     "openrouter:openai/gpt-4o-mini": 0.7,
     "openrouter:mistralai/mistral-large-2512": 0.6,
-    # "groq:llama-3.1-8b-instant": 0.7,
     "groq:openai/gpt-oss-20b": 0.7,
     "groq:llama-3.2-3b": 0.6,
     "groq:llama-3.3-70b-versatile": 0.7,
@@ -225,11 +224,21 @@ class ChatRequest(BaseModel):
     deep_search: bool = False  # ← add this
 
 
+def estimate_tokens(text: str) -> int:
+    """Rough estimate: ~4 chars per token. Good enough for usage tracking."""
+    return max(1, len(text or "") // 4)
+
+def estimate_history_tokens(history: list[ChatMsg]) -> int:
+    return sum(estimate_tokens(m.content) for m in history)
+
 def get_max_tokens(is_premium: bool) -> int:
     return 8192 if is_premium else 2048
 
 def sse(payload: Dict[str, Any]) -> str:
     return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+
+def sse_usage(input_tokens: int, output_tokens: int) -> str:
+    return "data: " + json.dumps({"_usage": {"i": input_tokens, "o": output_tokens}}) + "\n\n"
 
 def short_error_message(err: str) -> str:
     s = (err or "").strip()
@@ -250,7 +259,6 @@ def short_error_message(err: str) -> str:
         if any(k in s for k in keywords):
             return message
 
-    # fallback: first line, truncated
     first = s.splitlines()[0] if s else "Something went wrong."
     return (first[:140] + "…") if len(first) > 140 else first or "Something went wrong."
 
@@ -506,11 +514,20 @@ def anthropic_stream(
     if system_text:
         kwargs["system"] = system_text
 
+    input_tokens = 0
+    output_tokens = 0
+
     with client.messages.stream(**kwargs) as stream:
         for text in stream.text_stream:
             if text:
                 yield sse({"t": text})
 
+        final = stream.get_final_message()
+        if final and final.usage:
+            input_tokens  = getattr(final.usage, "input_tokens", 0) or 0
+            output_tokens = getattr(final.usage, "output_tokens", 0) or 0
+
+    yield sse_usage(input_tokens, output_tokens)
     yield sse({"done": True})
 
 
@@ -572,8 +589,11 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list
             traceback.print_exc()
             raise
 
+        input_tokens = 0
+        output_tokens = 0
         event_count = 0
         delta_count = 0
+
         for event in stream:
             event_count += 1
             event_type = getattr(event, "type", None)
@@ -587,7 +607,15 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list
                     delta_count += 1
                     yield sse({"t": delta})
 
+            elif event_type == "response.completed":
+                resp = getattr(event, "response", None)
+                usage = getattr(resp, "usage", None) if resp else None
+                if usage:
+                    input_tokens  = getattr(usage, "input_tokens", 0) or 0
+                    output_tokens = getattr(usage, "output_tokens", 0) or 0
+
         print(f"[openai_stream:gpt5] ✅ stream done — {event_count} events, {delta_count} deltas yielded")
+        yield sse_usage(input_tokens, output_tokens)
         yield sse({"done": True})
         return
 
@@ -606,6 +634,7 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list
         "model": model_name,
         "messages": messages_payload,
         "stream": True,
+        "stream_options": {"include_usage": True},
     }
 
     if provider == "openrouter":
@@ -632,10 +661,18 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list
         traceback.print_exc()
         raise
 
+    input_tokens = 0
+    output_tokens = 0
     event_count = 0
     delta_count = 0
+
     for event in stream:
         event_count += 1
+
+        if hasattr(event, "usage") and event.usage:
+            input_tokens  = getattr(event.usage, "prompt_tokens", 0) or 0
+            output_tokens = getattr(event.usage, "completion_tokens", 0) or 0
+
         choice = event.choices[0] if event.choices else None
         if not choice:
             print(f"[openai_stream] ⚠️ event[{event_count}] has no choices: {event!r}")
@@ -656,6 +693,7 @@ def openai_stream(provider: str, model_name: str, req: ChatRequest, images: list
             yield sse({"t": delta})
 
     print(f"[openai_stream] ✅ stream done — {event_count} events, {delta_count} deltas yielded")
+    yield sse_usage(input_tokens, output_tokens)
     yield sse({"done": True})
 
 
@@ -706,23 +744,35 @@ def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]
     client = get_gemini_client()
     temp = get_temperature(req.model, req.temperature)
 
+    input_tokens = 0
+    output_tokens = 0
+
     if not images:
         prompt = build_gemini_prompt(req.messages)
         stream = client.models.generate_content_stream(
             model=model_name,
             contents=prompt,
-            config={"temperature": temp, "max_output_tokens": get_max_tokens(is_premium)},  # ADD
+            config={"temperature": temp, "max_output_tokens": get_max_tokens(is_premium)},
         )
         for chunk in stream:
+            meta = getattr(chunk, "usage_metadata", None)
+            if meta:
+                pt = getattr(meta, "prompt_token_count", None)
+                ct = getattr(meta, "candidates_token_count", None)
+                if pt is not None: input_tokens = pt
+                if ct is not None: output_tokens = ct
             text = getattr(chunk, "text", None)
             if text:
                 yield sse({"t": text})
+
+        yield sse_usage(input_tokens, output_tokens)
         yield sse({"done": True})
         return
 
+    # ── Images path ────────────────────────────────────────────────────────
     system_text, contents = build_gemini_contents_with_images(req.messages, images)
 
-    cfg: Dict[str, Any] = {"temperature": temp, "max_output_tokens": get_max_tokens(is_premium)}  # ADD
+    cfg: Dict[str, Any] = {"temperature": temp, "max_output_tokens": get_max_tokens(is_premium)}
     if system_text:
         cfg["system_instruction"] = system_text
 
@@ -731,12 +781,18 @@ def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]
         contents=contents,
         config=cfg,
     )
-
     for chunk in stream:
+        meta = getattr(chunk, "usage_metadata", None)
+        if meta:
+            pt = getattr(meta, "prompt_token_count", None)
+            ct = getattr(meta, "candidates_token_count", None)
+            if pt is not None: input_tokens = pt
+            if ct is not None: output_tokens = ct
         text = getattr(chunk, "text", None)
         if text:
             yield sse({"t": text})
 
+    yield sse_usage(input_tokens, output_tokens)
     yield sse({"done": True})
 
 
@@ -786,10 +842,20 @@ def derive_title_from_messages(msgs: List[ChatMsg]) -> str:
 async def get_me(authorization: str | None = Header(default=None)):
     user_id = require_user_id_from_auth(authorization)
     user = await get_or_create_user(user_id)
+
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    async with SessionLocal() as session:
+        today_row = (await session.execute(
+            select(func.count().label("n"))
+            .where(UsageLog.user_id == user_id)
+            .where(UsageLog.created_at >= today_start)
+        )).one()
+
+    daily_limit = None if user.is_premium else 20
     return {
         "is_premium": user.is_premium,
-        "message_count_today": user.message_count_today,
-        "daily_limit": None if user.is_premium else 20,
+        "message_count_today": today_row.n,
+        "daily_limit": daily_limit,
     }
 
 
@@ -1370,6 +1436,8 @@ async def chat_stream_with_files(
         last_flush = time.monotonic()
         FLUSH_INTERVAL_SEC = 0.25
         FLUSH_MIN_CHARS = 40
+        exact_input_tokens = 0
+        exact_output_tokens = 0
 
         async def flush(force: bool = False):
             nonlocal buffer_text, last_flush
@@ -1487,8 +1555,6 @@ async def chat_stream_with_files(
                 except StopIteration:
                     break
 
-                yield chunk
-
                 if chunk.startswith("data: "):
                     payload = chunk[6:].strip()
                     try:
@@ -1496,13 +1562,42 @@ async def chat_stream_with_files(
                     except Exception:
                         obj = None
 
-                    if isinstance(obj, dict) and obj.get("t"):
-                        buffer_text += obj["t"]
-                        await flush(False)
+                    if isinstance(obj, dict):
+                        # ── Intercept _usage event — never forwarded to client ──
+                        if "_usage" in obj:
+                            exact_input_tokens  = obj["_usage"].get("i", 0)
+                            exact_output_tokens = obj["_usage"].get("o", 0)
+                            yield chunk 
+                            continue
 
-                    if isinstance(obj, dict) and obj.get("done"):
-                        await flush(True)
-                        return
+                        if obj.get("t"):
+                            buffer_text += obj["t"]
+                            await flush(False)
+
+                        if obj.get("done"):
+                            await flush(True)
+
+                            # ── Write usage log ────────────────────────────────
+                            try:
+                                async with SessionLocal() as session:
+                                    session.add(UsageLog(
+                                        user_id=user_id,
+                                        chat_id=chat_id,
+                                        model=model,
+                                        provider=provider,
+                                        input_tokens=exact_input_tokens,
+                                        output_tokens=exact_output_tokens,
+                                    ))
+                                    await session.commit()
+                                print(f"[usage] ✓ user={user_id} model={model} in={exact_input_tokens} out={exact_output_tokens}")
+                            except Exception as log_err:
+                                print(f"[usage] ⚠️ failed to record usage: {log_err}")
+                            # ── End usage log ──────────────────────────────────
+
+                            yield chunk  
+                            return
+
+                yield chunk  
 
             await flush(True)
             yield sse({"done": True})
@@ -1513,11 +1608,35 @@ async def chat_stream_with_files(
             except Exception:
                 pass
 
+            try:
+                async with SessionLocal() as session:
+                    session.add(UsageLog(
+                        user_id=user_id,
+                        chat_id=chat_id,
+                        model=model,
+                        provider=provider,
+                        input_tokens=exact_input_tokens,
+                        output_tokens=exact_output_tokens,
+                    ))
+                    await session.commit()
+                print(f"[usage] ✓ (on error) user={user_id} in={exact_input_tokens} out={exact_output_tokens}")
+            except Exception:
+                pass
+
             full = f"{type(e).__name__}: {str(e)}"
+
             yield sse({"error": full, "error_short": short_error_message(full)})
             yield sse({"done": True})
 
-    return StreamingResponse(gen(), media_type="text/event-stream")
+    return StreamingResponse(
+        gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 @app.post("/v1/audio/speak")
@@ -1565,3 +1684,50 @@ async def speak(
         media_type="audio/mpeg",
         headers={"Content-Disposition": "inline; filename=speech.mp3"},
     )
+
+
+@app.get("/v1/usage")
+async def get_usage(authorization: str | None = Header(default=None)):
+    user_id = require_user_id_from_auth(authorization)
+
+    async with SessionLocal() as session:
+        user = await get_or_create_user(user_id)
+        month_start = datetime.utcnow().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+        row = (await session.execute(
+            select(
+                func.count().label("requests"),
+                func.coalesce(func.sum(UsageLog.input_tokens + UsageLog.output_tokens), 0).label("tokens"),
+            )
+            .where(UsageLog.user_id == user_id)
+            .where(UsageLog.created_at >= month_start)
+        )).one()
+
+        by_model = (await session.execute(
+            select(
+                UsageLog.model,
+                func.count().label("requests"),
+                func.coalesce(func.sum(UsageLog.input_tokens + UsageLog.output_tokens), 0).label("tokens"),
+            )
+            .where(UsageLog.user_id == user_id)
+            .where(UsageLog.created_at >= month_start)
+            .group_by(UsageLog.model)
+            .order_by(func.sum(UsageLog.input_tokens + UsageLog.output_tokens).desc())
+        )).all()
+
+    plan = "monthly" if user.is_premium else "free"
+    limits = {"free": {"requests": 100, "tokens": 50_000},
+              "monthly": {"requests": 2000, "tokens": 2_000_000}}
+
+    return {
+        "plan": plan,
+        "usage": {
+            "requests": row.requests,
+            "tokens": row.tokens,
+        },
+        "quota": limits.get(plan, limits["free"]),
+        "by_model": [
+            {"model": r.model, "requests": r.requests, "tokens": r.tokens}
+            for r in by_model
+        ],
+    }
