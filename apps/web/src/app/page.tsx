@@ -109,6 +109,8 @@ export default function Page() {
   const [shareCopied, setShareCopied] = useState(false);
 
   const [isPremium, setIsPremium] = useState(false);
+  // const [isPremium, setIsPremium] = useState(true); // uncomment when wants isPremium = true
+  const [deepSearch, setDeepSearch] = useState(false);
 
   async function fetchMe(user: User) {
     try {
@@ -123,7 +125,7 @@ export default function Page() {
       if (res.ok) {
         const data = await res.json();
         // Use either DB or Firebase claims
-        setIsPremium(!!data.is_premium || claimsPremium);
+        setIsPremium(!!data.is_premium || claimsPremium); // uncomment when wants isPremium = true
       } else {
         setIsPremium(claimsPremium);
       }
@@ -612,6 +614,7 @@ export default function Page() {
       const fd = new FormData();
       fd.append("chat_id", chatId);
       fd.append("model", model);
+      fd.append("deep_search", deepSearch ? "true" : "false");
       fd.append("temperature", String(getTemperature(model)));
       fd.append("message", newContent);
       fd.append("messages", JSON.stringify(base));
@@ -721,6 +724,7 @@ export default function Page() {
       const fd = new FormData();
       fd.append("chat_id", chatId);
       fd.append("model", model);
+      fd.append("deep_search", deepSearch ? "true" : "false");
       fd.append("temperature", String(getTemperature(model)));
       if (isRetry) {
         fd.append("retry", "true");
@@ -1028,6 +1032,8 @@ export default function Page() {
               isSidebarCollapsed={isSidebarCollapsed}
               onToggleSidebar={() => setIsSidebarCollapsed((v) => !v)}
               isPremium={isPremium}
+              deepSearch={deepSearch}
+              onToggleDeepSearch={() => setDeepSearch((v) => !v)}
             />
           </div>
         </section>

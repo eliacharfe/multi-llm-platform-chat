@@ -123,7 +123,7 @@ function PremiumPageInner() {
                     <button
                         type="button"
                         onClick={() => router.push("/")}
-                        className="mt-8 w-full rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
+                        className="mt-8 w-full rounded-full bg-linear-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
                     >
                         Back to chat
                     </button>
@@ -161,7 +161,7 @@ function PremiumPageInner() {
                     <button
                         type="button"
                         onClick={() => router.push("/")}
-                        className="mt-8 w-full rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
+                        className="mt-8 w-full rounded-full bg-linear-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black"
                     >
                         Back to chat
                     </button>
@@ -197,6 +197,7 @@ function PremiumPageInner() {
                             <li>• Full premium AI model access</li>
                             <li>• Higher usage limits</li>
                             <li>• 8,192 token context window (4× more)</li>
+                            <li>• Deep Search — real-time web results in any chat</li>
                             <li>• Cancel anytime</li>
                             <li>• No hidden fees</li>
                         </ul>
@@ -204,7 +205,7 @@ function PremiumPageInner() {
                             type="button"
                             onClick={() => handleCheckout("monthly")}
                             disabled={!!loading}
-                            className="mt-6 w-full rounded-full bg-gradient-to-r from-yellow-300 to-amber-500 px-6 py-3 font-semibold text-black disabled:opacity-60"
+                            className="mt-6 w-full rounded-full bg-linear-to-r from-yellow-300 to-amber-500 px-6 py-3 font-semibold text-black disabled:opacity-60"
                         >
                             {loading === "monthly" ? "Loading…" : "Choose Monthly"}
                         </button>
@@ -224,6 +225,7 @@ function PremiumPageInner() {
                             <li>• Full premium AI model access</li>
                             <li>• Higher usage limits</li>
                             <li>• 8,192 token context window (4× more)</li>
+                            <li>• Deep Search — real-time web results in any chat</li>
                             <li>• Cancel anytime</li>
                             <li>• No hidden fees</li>
                         </ul>
@@ -231,7 +233,7 @@ function PremiumPageInner() {
                             type="button"
                             onClick={() => handleCheckout("yearly")}
                             disabled={!!loading}
-                            className="mt-6 w-full rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black disabled:opacity-60"
+                            className="mt-6 w-full rounded-full bg-linear-to-r from-teal-300 to-cyan-400 px-6 py-3 font-semibold text-black disabled:opacity-60"
                         >
                             {loading === "yearly" ? "Loading…" : "Choose Yearly"}
                         </button>

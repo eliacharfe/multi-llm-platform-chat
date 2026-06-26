@@ -8,6 +8,7 @@ const features = [
     { label: "AI providers", free: "1 (Gemini Flash)", premium: "All (OpenAI, Claude, Gemini, Groq, DeepSeek, OpenRouter)" },
     { label: "Context window", free: "2,048 tokens", premium: "8,192 tokens (4× more)" },
     { label: "Usage limits", free: "Limited", premium: "Higher limits" },
+    { label: "Deep Search", free: "✗", premium: "✓ Real-time web search on any model" },  // ← add
     { label: "File attachments", free: "✗", premium: "✓" },
     { label: "Image-aware prompting", free: "✗", premium: "✓" },
     { label: "Chat history", free: "✓", premium: "✓" },
@@ -70,7 +71,7 @@ export default function PricingPage() {
                         </div>
                         <Link
                             href="/?upgrade=monthly"
-                            className="mt-8 block text-center rounded-full bg-gradient-to-r from-yellow-300 to-amber-500 px-6 py-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+                            className="mt-8 block text-center rounded-full bg-linear-to-r from-yellow-300 to-amber-500 px-6 py-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
                         >
                             Get Monthly
                         </Link>
@@ -93,7 +94,7 @@ export default function PricingPage() {
                         </div>
                         <Link
                             href="/?upgrade=yearly"
-                            className="mt-8 block text-center rounded-full bg-gradient-to-r from-teal-300 to-cyan-400 px-6 py-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
+                            className="mt-8 block text-center rounded-full bg-linear-to-r from-teal-300 to-cyan-400 px-6 py-3 text-sm font-semibold text-black hover:opacity-90 transition-opacity"
                         >
                             Get Yearly
                         </Link>
@@ -114,7 +115,7 @@ export default function PricingPage() {
                             {features.map((f, i) => (
                                 <tr
                                     key={f.label}
-                                    className={`border-b border-white/5 ${i % 2 === 0 ? "" : "bg-white/[0.02]"}`}
+                                    className={`border-b border-white/5 ${i % 2 === 0 ? "" : "bg-white/2"}`}
                                 >
                                     <td className="px-6 py-4 text-white/70">{f.label}</td>
                                     <td className="px-4 py-4 text-center text-white/50">{f.free}</td>

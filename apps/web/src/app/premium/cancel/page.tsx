@@ -22,6 +22,11 @@ const BENEFITS = [
         desc: "GPT-5, Claude Opus, Gemini Flash & more",
     },
     {
+        icon: "🔍",
+        title: "Deep Search",
+        desc: "Real-time web search injected into any model",
+    },
+    {
         icon: "∞",
         title: "Unlimited messages",
         desc: "No daily caps, ever",
@@ -100,7 +105,7 @@ export default function CancelSubscriptionPage() {
                     {/* Success card */}
                     <div className="rounded-2xl border border-white/10 bg-[#242424] overflow-hidden">
                         {/* Top accent bar */}
-                        <div className="h-1 w-full bg-gradient-to-r from-teal-500/60 via-teal-400/40 to-transparent" />
+                        <div className="h-1 w-full bg-linear-to-r from-teal-500/60 via-teal-400/40 to-transparent" />
 
                         <div className="px-8 py-10 text-center">
                             <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-teal-500/15 border border-teal-400/20 mb-6">
@@ -232,7 +237,7 @@ export default function CancelSubscriptionPage() {
                     {/* RIGHT — confirm card */}
                     <div className="md:sticky md:top-8">
                         <div className="rounded-2xl border border-white/10 bg-[#242424] overflow-hidden">
-                            <div className="h-0.5 w-full bg-gradient-to-r from-red-500/40 via-red-400/20 to-transparent" />
+                            <div className="h-0.5 w-full bg-linear-to-r from-red-500/40 via-red-400/20 to-transparent" />
 
                             <div className="px-6 py-6">
                                 <h2 className="text-base font-semibold text-gray-100 mb-1">

@@ -13,3 +13,4 @@ asyncpg
 firebase-admin
 requests
 paddle-python-sdk
+tavily-python>=0.3

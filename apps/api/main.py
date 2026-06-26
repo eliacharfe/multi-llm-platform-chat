@@ -220,6 +220,7 @@ class ChatRequest(BaseModel):
     model: str
     messages: List[ChatMsg]
     temperature: Optional[float] = None
+    deep_search: bool = False  # ← add this
 
 
 def get_max_tokens(is_premium: bool) -> int:
@@ -1171,6 +1172,7 @@ async def chat_stream_with_files(
     message: str = Form(""),
     messages: str = Form("[]"),
     retry: bool = Form(False),
+    deep_search: bool = Form(False),
     files: List[UploadFile] = File(default=[]),
     authorization: str | None = Header(default=None),
 ):
@@ -1185,6 +1187,30 @@ async def chat_stream_with_files(
     # ── Always load user + premium status ──────────────────────────────────
     user = await get_or_create_user(user_id)
     is_premium = user.is_premium
+
+    # ── Deep Search (premium only) ─────────────────────────────────────────
+    search_context: str = ""
+    if deep_search:
+        if not is_premium:  # uncomment when wants isPremium = true
+            return StreamingResponse(
+                iter([
+                    sse({
+                        "error": "Deep Search is a Premium feature. Upgrade to use it.",
+                        "error_short": "Deep Search requires Premium."
+                    }),
+                    sse({"done": True})
+                ]),
+                media_type="text/event-stream",
+            )
+        try:
+            from services.web_search_client import web_search
+            raw_query = (message or "").strip()
+            if raw_query:
+                search_context = await web_search(raw_query, max_results=5)
+                print(f"[deep_search] query={raw_query[:80]!r} context_len={len(search_context)}")
+        except Exception as e:
+            print(f"[deep_search] ⚠️ search failed: {e}")
+            search_context = ""  # fail silently, don't block the chat
 
     # ── Premium model gate ─────────────────────────────────────────────────
     if model in PREMIUM_MODELS and not is_premium:
@@ -1327,6 +1353,13 @@ async def chat_stream_with_files(
         )
         user_payload = build_general_task_prompt(user_text) if is_first_message else user_text
 
+    if search_context:
+        user_payload = (
+            search_context
+            + "\n\n---\n\nUsing the web search results above where relevant, answer the following:\n\n"
+            + user_payload
+        )
+
     # -------------------------------------------------------------------------
     # Stream + flush into DB
     # -------------------------------------------------------------------------
@@ -1427,6 +1460,7 @@ async def chat_stream_with_files(
                     model=model,
                     messages=history,
                     temperature=temperature,
+                    deep_search=deep_search,
                 )
 
             loop = asyncio.get_event_loop()

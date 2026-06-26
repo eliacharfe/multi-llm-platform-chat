@@ -35,6 +35,9 @@ const Composer = forwardRef<ComposerHandle, {
     isSidebarCollapsed: boolean;
     onToggleSidebar: () => void;
     isPremium?: boolean;
+
+    deepSearch: boolean;
+    onToggleDeepSearch: () => void;
 }>(function Composer(
     {
         input,
@@ -56,6 +59,9 @@ const Composer = forwardRef<ComposerHandle, {
         isSidebarCollapsed,
         onToggleSidebar,
         isPremium,
+
+        deepSearch,
+        onToggleDeepSearch,
     },
     ref
 ) {
@@ -222,6 +228,33 @@ const Composer = forwardRef<ComposerHandle, {
                                             disabled={isStreaming}
                                         />
                                     </label>
+                                </Tooltip>
+
+                                {/* Deep Search toggle */}
+                                <Tooltip
+                                    text={isPremium ? (deepSearch ? "Deep Search on" : "Deep Search off") : "Deep Search — Premium only"}
+                                    side="bottom"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={isPremium ? onToggleDeepSearch : undefined}
+                                        disabled={isStreaming}
+                                        className={[
+                                            "flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs font-medium transition select-none",
+                                            !isPremium
+                                                ? "cursor-not-allowed opacity-40 text-white/50"
+                                                : deepSearch
+                                                    ? "bg-blue-600/30 text-blue-300 border border-blue-500/40"
+                                                    : "text-white/60 hover:text-white hover:bg-white/6",
+                                        ].join(" ")}
+                                        aria-label="Toggle Deep Search"
+                                    >
+                                        <svg viewBox="0 0 24 24" className="h-4 w-4 shrink-0" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                            <circle cx="12" cy="12" r="10" />
+                                            <path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                                        </svg>
+                                        <span className="hidden sm:inline">Search</span>
+                                    </button>
                                 </Tooltip>
 
                                 <ModelDropdown
