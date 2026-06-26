@@ -6,6 +6,8 @@ import "./globals.css";
 import "prismjs/themes/prism-tomorrow.css";
 import "@/lib/prism";
 import { Analytics } from "@vercel/analytics/react";
+import PwaRegister from "@/components/pwa-register";
+import InstallAppPopup from "@/components/install-app-popup";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -69,6 +71,12 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "default",
+    title: "MultiLLM",
+  },
+  manifest: "/manifest.webmanifest",
 };
 
 export default function RootLayout({
@@ -82,10 +90,12 @@ export default function RootLayout({
         suppressHydrationWarning
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+        <PwaRegister />
+
         {children}
 
         <Analytics />
-
+        <InstallAppPopup />
       </body>
     </html>
   );
