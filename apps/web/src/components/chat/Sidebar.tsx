@@ -326,12 +326,12 @@ export default function Sidebar({
                                     <span className="text-teal-400 text-sm">⚡</span>
                                     <span className="text-xs text-teal-300 font-medium">Premium</span>
                                 </div>
-                                <a
+                                {/* <a
                                     href="/premium/cancel"
                                     className="text-[11px] text-gray-400 hover:text-red-400 transition underline underline-offset-2"
                                 >
                                     Cancel
-                                </a>
+                                </a> */}
                             </div>
                         )}
                         <button

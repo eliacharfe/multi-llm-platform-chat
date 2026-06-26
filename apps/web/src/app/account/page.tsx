@@ -316,11 +316,10 @@ export default function AccountPage() {
                             ) : (
                                 <button
                                     type="button"
-                                    onClick={handleCancel}
-                                    disabled={!!actionLoading}
-                                    className="w-full rounded-full border border-red-500/25 bg-red-500/8 px-5 py-3 text-sm font-medium text-red-400/80 hover:bg-red-500/15 hover:text-red-400 disabled:opacity-60 transition"
+                                    onClick={() => router.push("/premium/cancel")}
+                                    className="w-full rounded-full border border-red-500/25 bg-red-500/8 px-5 py-3 text-sm font-medium text-red-400/80 hover:bg-red-500/15 hover:text-red-400 transition"
                                 >
-                                    {actionLoading === "cancel" ? "Canceling…" : "Cancel subscription"}
+                                    Cancel subscription
                                 </button>
                             )
                         )}
