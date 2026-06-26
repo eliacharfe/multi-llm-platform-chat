@@ -5,6 +5,7 @@
 
 import React from "react";
 import IconGhostButton from "@/components/ui/IconGhostButton";
+import { useRouter } from "next/navigation";
 
 export type ChatListItem = {
     id: string;
@@ -90,7 +91,7 @@ export default function Sidebar({
     onOpenAuth: () => void;
     isPremium: boolean;
 }) {
-
+    const router = useRouter();
     const [loadingTick, setLoadingTick] = React.useState(0);
     const [nowMs, setNowMs] = React.useState(() => Date.now());
 
@@ -335,11 +336,25 @@ export default function Sidebar({
                         )}
                         <button
                             type="button"
-                            onClick={onOpenAuth}
+                            onClick={() => {
+                                if (isAuthed) {
+                                    router.push("/account");
+                                    if (isSmall) setIsSidebarCollapsed(true);
+                                } else {
+                                    onOpenAuth();
+                                }
+                            }}
                             className="w-full rounded-lg bg-black/20 border border-white/10 hover:bg-black/30 transition px-3 py-2 text-sm flex items-center justify-between gap-2"
                         >
                             <span className="truncate">{userLabel}</span>
-                            <span className="text-xs text-gray-400">{isAuthed ? "🟢" : "○"}</span>
+                            <span className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-xs text-gray-400">{isAuthed ? "🟢" : "○"}</span>
+                                {isAuthed && (
+                                    <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M9 18l6-6-6-6" />
+                                    </svg>
+                                )}
+                            </span>
                         </button>
                     </div>
                 </div>

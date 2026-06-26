@@ -251,3 +251,72 @@ async def reactivate_subscription(
         raise HTTPException(500, f"Polar error {res.status_code}: {res.text}")
 
     return {"ok": True, "message": "Subscription reactivated."}
+
+
+# ── Add this endpoint to polar_billing.py ──────────────────────────────────
+# Place it after the reactivate_subscription endpoint.
+
+@router.get("/v1/account")
+async def get_account(
+    authorization: str | None = Header(default=None),
+):
+    """
+    Returns account + subscription details for the Account page.
+    Fetches live data from Polar if the user has a subscription.
+    """
+    uid = _uid_from_token(authorization)
+    user = await get_or_create_user(uid)
+
+    # Base response — no subscription
+    result = {
+        "is_premium": user.is_premium,
+        "plan": None,           # "monthly" | "yearly" | None
+        "status": None,         # "active" | "canceled" (cancel_at_period_end) | None
+        "current_period_end": None,  # ISO string
+    }
+
+    sub_id = getattr(user, "paddle_subscription_id", None)
+    if not sub_id:
+        return result
+
+    # Fetch live subscription data from Polar
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            res = await client.get(
+                f"{POLAR_BASE_URL}/v1/subscriptions/{sub_id}",
+                headers={"Authorization": f"Bearer {POLAR_ACCESS_TOKEN}"},
+            )
+
+        if res.status_code == 200:
+            data = res.json()
+
+            # Determine plan from product_id
+            product_id = (data.get("product_id") or "").strip()
+            monthly_id = os.environ.get("POLAR_MONTHLY_PRODUCT_ID", "")
+            yearly_id = os.environ.get("POLAR_YEARLY_PRODUCT_ID", "")
+
+            if product_id == monthly_id:
+                result["plan"] = "monthly"
+            elif product_id == yearly_id:
+                result["plan"] = "yearly"
+
+            # Status: canceled means cancel_at_period_end=True but still active
+            cancel_at_period_end = data.get("cancel_at_period_end", False)
+            polar_status = data.get("status", "")
+            if polar_status == "active" and cancel_at_period_end:
+                result["status"] = "canceled"
+            elif polar_status == "active":
+                result["status"] = "active"
+
+            # Renewal / expiry date
+            result["current_period_end"] = data.get("current_period_end")
+
+        else:
+            print(f"[/v1/account] Polar returned {res.status_code} for sub {sub_id}")
+
+    except Exception as e:
+        print(f"[/v1/account] Failed to fetch Polar subscription: {e}")
+        # Return what we have from DB — don't crash the page
+
+    return result
+

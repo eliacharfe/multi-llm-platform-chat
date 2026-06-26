@@ -11,7 +11,8 @@ export const MODEL_OPTIONS = [
     "openrouter:x-ai/grok-4.3",
     "openrouter:openai/gpt-4o-mini",
     "openrouter:mistralai/mistral-large-2512",
-    "groq:llama-3.1-8b-instant",
+    // "groq:llama-3.1-8b-instant",
+    "groq:openai/gpt-oss-20b",
     "groq:llama-3.3-70b-versatile",
     "anthropic:claude-haiku-4-5",
     "anthropic:claude-sonnet-4-6",
@@ -27,7 +28,8 @@ const TEMPERATURE_BY_MODEL: Record<string, number> = {
     "openrouter:x-ai/grok-4.3": 0.7,
     "openrouter:openai/gpt-4o-mini": 0.7,
     "openrouter:mistralai/mistral-large-2512": 0.6,
-    "groq:llama-3.1-8b-instant": 0.7,
+    // "groq:llama-3.1-8b-instant": 0.7,
+    "groq:openai/gpt-oss-20b": 0.7,
     "groq:llama-3.2-3b": 0.6,
     "groq:llama-3.3-70b-versatile": 0.7,
     "anthropic:claude-haiku-4-5": 0.7,
@@ -53,7 +55,8 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
     "openrouter:x-ai/grok-4.3": { input: 3.00, output: 15.00 },
     "openrouter:openai/gpt-4o-mini": { input: 0.15, output: 0.60 },
     "openrouter:mistralai/mistral-large-2512": { input: 2.00, output: 6.00 },
-    "groq:llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
+    // "groq:llama-3.1-8b-instant": { input: 0.05, output: 0.08 },
+    "groq:openai/gpt-oss-20b": { input: 0.075, output: 0.30 },
     "groq:llama-3.3-70b-versatile": { input: 0.59, output: 0.79 },
     "anthropic:claude-haiku-4-5": { input: 0.80, output: 4.00 },
     "anthropic:claude-sonnet-4-6": { input: 3.00, output: 15.00 },
@@ -116,6 +119,8 @@ export function prettifyModelName(modelName: string) {
             if (lw === "llama") return "Llama";
             if (lw === "claude") return "Claude";
             if (lw === "gemini") return "Gemini";
+            if (lw === "oss") return "OSS";
+            if (lw === "openai") return "OpenAI";  // already handled if you add this
             return /^[0-9.]+$/.test(w) ? w : w.charAt(0).toUpperCase() + w.slice(1);
         })
         .join(" ");
@@ -190,7 +195,8 @@ export const TIER_MODEL_BY_PROVIDER: Record<
 
     // Groq
     groq: {
-        instant: "groq:llama-3.1-8b-instant",
+        // instant: "groq:llama-3.1-8b-instant",
+        instant: "groq:openai/gpt-oss-20b",
         thinking: "groq:llama-3.3-70b-versatile",
     },
 
