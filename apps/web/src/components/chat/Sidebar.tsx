@@ -179,25 +179,13 @@ export default function Sidebar({
                     {/* Top actions */}
                     <div className="flex flex-col gap-3 shrink-0">
 
-                        {isSmall && isAuthed && (
-                            isPremium ? (
-                                <div className="w-full flex items-center justify-between rounded-full bg-teal-500/20 border border-teal-400/30 px-4 py-2 text-sm font-semibold text-teal-300">
-                                    <span>⚡ Premium</span>
-                                    <a
-                                        href="/premium/cancel"
-                                        className="text-[11px] font-normal text-gray-400 hover:text-red-400 transition underline underline-offset-2"
-                                    >
-                                        Cancel
-                                    </a>
-                                </div>
-                            ) : (
-                                <a
-                                    href="/premium"
-                                    className="w-full rounded-full bg-linear-to-r from-yellow-300 to-amber-500 px-4 py-2 text-sm font-semibold text-black text-center"
-                                >
-                                    ⚡ Upgrade to Premium
-                                </a>
-                            )
+                        {isSmall && isAuthed && !isPremium && (
+                            <a
+                                href="/premium"
+                                className="w-full rounded-full bg-linear-to-r from-yellow-300 to-amber-500 px-4 py-2 text-sm font-semibold text-black text-center"
+                            >
+                                ⚡ Upgrade to Premium
+                            </a>
                         )}
 
                         <button
