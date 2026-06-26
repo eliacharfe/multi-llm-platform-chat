@@ -147,7 +147,7 @@ export default function PricingPage() {
                         {[
                             {
                                 q: "What AI models are included in Premium?",
-                                a: "Premium unlocks all supported models: OpenAI (GPT-5, GPT-5 Mini, GPT-5 Nano), Anthropic (Claude Haiku, Sonnet, and Opus), Google Gemini (2.5 Flash, 2.5 Flash Lite), Groq (Llama 3.1 8B, Llama 3.3 70B), and via OpenRouter: DeepSeek, Grok 4.3, GPT-4o Mini, and Mistral Large — all in one interface.",
+                                a: "Premium unlocks all supported models: OpenAI (GPT-5, GPT-5 Mini, GPT-5 Nano), Anthropic (Claude Haiku, Sonnet, and Opus), Google Gemini (2.5 Flash, 2.5 Flash Lite, 2.5 Pro), Groq (Llama 3.1 8B, Llama 3.3 70B), and via OpenRouter: DeepSeek, Grok 4.3, GPT-4o Mini, and Mistral Large — all in one interface.",
                             },
                             {
                                 q: "Can I switch between monthly and yearly?",

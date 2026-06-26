@@ -122,6 +122,7 @@ MODEL_OPTIONS = [
     "anthropic:claude-opus-4-6",
     "gemini:models/gemini-2.5-flash-lite",
     "gemini:models/gemini-2.5-flash",
+    "gemini:models/gemini-2.5-pro",
 ]
 
 VISION_MODELS = {
@@ -134,6 +135,7 @@ VISION_MODELS = {
     "anthropic:claude-opus-4-6", 
     "gemini:models/gemini-2.5-flash-lite",
     "gemini:models/gemini-2.5-flash",
+    "gemini:models/gemini-2.5-pro",
 }
 
 ALLOWED_IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".webp"}

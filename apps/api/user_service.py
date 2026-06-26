@@ -11,6 +11,7 @@ PREMIUM_MODELS = {
     "anthropic:claude-opus-4-6",
     "openai:gpt-5",
     "openrouter:mistralai/mistral-large-2512",
+    "gemini:models/gemini-2.5-pro",
 }
 
 

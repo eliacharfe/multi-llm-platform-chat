@@ -18,6 +18,7 @@ export const MODEL_OPTIONS = [
     "anthropic:claude-opus-4-6",
     "gemini:models/gemini-2.5-flash-lite",
     "gemini:models/gemini-2.5-flash",
+    "gemini:models/gemini-2.5-pro",
 ] as const;
 
 const DEFAULT_TEMPERATURE = 0.7;
@@ -40,6 +41,7 @@ export const PREMIUM_MODELS = new Set([
     "anthropic:claude-opus-4-6",
     "openai:gpt-5",
     "openrouter:mistralai/mistral-large-2512",
+    "gemini:models/gemini-2.5-pro",
 ]);
 
 // Cost per 1M tokens in USD
@@ -58,6 +60,7 @@ export const MODEL_PRICING: Record<string, { input: number; output: number }> = 
     "anthropic:claude-opus-4-6": { input: 15.00, output: 75.00 },
     "gemini:models/gemini-2.5-flash-lite": { input: 0.10, output: 0.40 },
     "gemini:models/gemini-2.5-flash": { input: 0.30, output: 2.50 },
+    "gemini:models/gemini-2.5-pro": { input: 1.25, output: 10.00 },
 };
 
 export function estimateTokens(text: string): number {
@@ -175,7 +178,8 @@ export const TIER_MODEL_BY_PROVIDER: Record<
     //  Gemini 
     gemini: {
         instant: "gemini:models/gemini-2.5-flash-lite",
-        thinking: "gemini:models/gemini-2.5-flash",
+        // thinking: "gemini:models/gemini-2.5-flash",
+        thinking: "gemini:models/gemini-2.5-pro",
     },
 
     // OpenAI
