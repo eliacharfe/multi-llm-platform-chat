@@ -20,6 +20,7 @@ import type { Msg } from "@/components/chat/MessageList";
 import TokenCounter from "@/components/chat/TokenCounter";
 
 import Composer, { type ComposerHandle } from "@/components/chat/Composer";
+import Footer from "@/components/ui/Footer";
 
 import { MODEL_OPTIONS, getTemperature, thinkingText, buildSectionedChoices, prettifyModelName, estimateTokens } from "@/lib/models";
 
@@ -1035,6 +1036,8 @@ export default function Page() {
               deepSearch={deepSearch}
               onToggleDeepSearch={() => setDeepSearch((v) => !v)}
             />
+
+            <Footer />
           </div>
         </section>
       </div >
