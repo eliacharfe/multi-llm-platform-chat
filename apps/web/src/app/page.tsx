@@ -163,6 +163,8 @@ export default function Page() {
   useEffect(() => {
     const handler = (e: any) => {
       e.preventDefault();
+      localStorage.removeItem("pwa-installed");
+      setIsAppInstalled(false);
       setDeferredInstallPrompt(e);
     };
 
