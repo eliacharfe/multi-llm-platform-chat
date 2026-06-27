@@ -52,8 +52,20 @@ def get_anthropic_client() -> anthropic.Anthropic:
         raise RuntimeError("Missing ANTHROPIC_API_KEY in .env")
     return anthropic.Anthropic(api_key=api_key)
 
+def get_async_anthropic_client() -> anthropic.AsyncAnthropic:
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing ANTHROPIC_API_KEY in .env")
+    return anthropic.AsyncAnthropic(api_key=api_key)
+
 
 def get_gemini_client() -> genai.Client:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing GEMINI_API_KEY in .env")
+    return genai.Client(api_key=api_key)
+
+def get_async_gemini_client() -> genai.Client:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise RuntimeError("Missing GEMINI_API_KEY in .env")

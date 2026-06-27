@@ -89,7 +89,7 @@ export default function InstallAppPopup() {
                     </h3>
 
                     <p className="mt-1 text-sm leading-5 text-white/60">
-                        Install for faster access to all your AI models, right from your desktop.
+                        Install for faster access to all your AI models, right from your desktop/home screen.
                     </p>
 
                     <div className="mt-4 flex flex-wrap gap-2">

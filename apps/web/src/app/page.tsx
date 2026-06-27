@@ -395,9 +395,9 @@ export default function Page() {
         let obj: any;
         try { obj = JSON.parse(lines.map(l => l.slice(5).replace(/^\s/, "")).join("\n")); }
         catch { continue; }
-        if (obj._usage || obj.done || (!obj.t)) {
-          console.log("[SSE full obj]", JSON.stringify(obj));
-        }
+        // if (obj._usage || obj.done || (!obj.t)) {
+        //   console.log("[SSE full obj]", JSON.stringify(obj));
+        // }
         if (obj._usage) { onUsage?.(obj._usage.i ?? 0, obj._usage.o ?? 0); continue; }
         if (obj.done) return true;
         if (obj.error) { onError(String(obj.error_short ?? obj.error ?? "Unknown error")); return true; }
@@ -410,7 +410,7 @@ export default function Page() {
       const { done, value } = await reader.read();
       if (value) {
         buffer += decoder.decode(value, { stream: true });
-        console.log("[SSE raw buffer length]", buffer.length); // ADD
+        // console.log("[SSE raw buffer length]", buffer.length); 
         if (processBuffer()) break;
       }
       if (done) break;

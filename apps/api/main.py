@@ -44,7 +44,9 @@ print("OPENAI_FILE =", getattr(openai, "__file__", "unknown"))
 from clients import (
     get_openai_compatible_client,
     get_anthropic_client,
+    get_async_anthropic_client,
     get_gemini_client,
+    get_async_gemini_client,
     openrouter_extra_headers,
 )
 
@@ -490,15 +492,14 @@ def build_anthropic_messages_with_images(
     return out
 
 
-def anthropic_stream(
+async def anthropic_stream_async(
     model_name: str,
     req: ChatRequest,
     images: List[Dict[str, str]] | None = None,
     is_premium: bool = False,
 ):
     images = images or []
-
-    client = get_anthropic_client()
+    client = get_async_anthropic_client()
     temp = get_temperature(req.model, req.temperature)
 
     system_text, chat = split_system_and_chat(req.messages)
@@ -510,19 +511,18 @@ def anthropic_stream(
         "temperature": temp,
         "messages": messages_for_claude,
     }
-
     if system_text:
         kwargs["system"] = system_text
 
     input_tokens = 0
     output_tokens = 0
 
-    with client.messages.stream(**kwargs) as stream:
-        for text in stream.text_stream:
+    async with client.messages.stream(**kwargs) as stream:
+        async for text in stream.text_stream:
             if text:
                 yield sse({"t": text})
 
-        final = stream.get_final_message()
+        final = await stream.get_final_message()
         if final and final.usage:
             input_tokens  = getattr(final.usage, "input_tokens", 0) or 0
             output_tokens = getattr(final.usage, "output_tokens", 0) or 0
@@ -739,9 +739,14 @@ def _extract_delta_text(delta_obj: Any) -> str | None:
     return None
 
 
-def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]] | None = None, is_premium: bool = False):
+async def gemini_stream_async(
+    model_name: str,
+    req: ChatRequest,
+    images: List[Dict[str, str]] | None = None,
+    is_premium: bool = False,
+):
     images = images or []
-    client = get_gemini_client()
+    client = get_async_gemini_client()
     temp = get_temperature(req.model, req.temperature)
 
     input_tokens = 0
@@ -749,12 +754,31 @@ def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]
 
     if not images:
         prompt = build_gemini_prompt(req.messages)
-        stream = client.models.generate_content_stream(
+        async for chunk in await client.aio.models.generate_content_stream(
             model=model_name,
             contents=prompt,
             config={"temperature": temp, "max_output_tokens": get_max_tokens(is_premium)},
-        )
-        for chunk in stream:
+        ):
+            meta = getattr(chunk, "usage_metadata", None)
+            if meta:
+                pt = getattr(meta, "prompt_token_count", None)
+                ct = getattr(meta, "candidates_token_count", None)
+                if pt is not None: input_tokens = pt
+                if ct is not None: output_tokens = ct
+            text = getattr(chunk, "text", None)
+            if text:
+                yield sse({"t": text})
+    else:
+        system_text, contents = build_gemini_contents_with_images(req.messages, images)
+        cfg: Dict[str, Any] = {"temperature": temp, "max_output_tokens": get_max_tokens(is_premium)}
+        if system_text:
+            cfg["system_instruction"] = system_text
+
+        async for chunk in await client.aio.models.generate_content_stream(
+            model=model_name,
+            contents=contents,
+            config=cfg,
+        ):
             meta = getattr(chunk, "usage_metadata", None)
             if meta:
                 pt = getattr(meta, "prompt_token_count", None)
@@ -767,7 +791,6 @@ def gemini_stream(model_name: str, req: ChatRequest, images: List[Dict[str, str]
 
         yield sse_usage(input_tokens, output_tokens)
         yield sse({"done": True})
-        return
 
     # ── Images path ────────────────────────────────────────────────────────
     system_text, contents = build_gemini_contents_with_images(req.messages, images)
@@ -1434,8 +1457,8 @@ async def chat_stream_with_files(
     async def gen():
         buffer_text = ""
         last_flush = time.monotonic()
-        FLUSH_INTERVAL_SEC = 0.25
-        FLUSH_MIN_CHARS = 40
+        FLUSH_INTERVAL_SEC = 0.05 
+        FLUSH_MIN_CHARS = 1
         exact_input_tokens = 0
         exact_output_tokens = 0
 
@@ -1535,16 +1558,63 @@ async def chat_stream_with_files(
 
             loop = asyncio.get_event_loop()
 
+            if provider in ("anthropic", "gemini"):
+                stream_fn = (
+                    anthropic_stream_async(model_name, llm_req, images=images, is_premium=is_premium)
+                    if provider == "anthropic"
+                    else gemini_stream_async(model_name, llm_req, images=images, is_premium=is_premium)
+                )
+                async for chunk in stream_fn:
+                # async for chunk in anthropic_stream_async(model_name, llm_req, images=images, is_premium=is_premium):
+                    if chunk.startswith("data: "):
+                        payload = chunk[6:].strip()
+                        try:
+                            obj = json.loads(payload)
+                        except Exception:
+                            obj = None
+
+                        if isinstance(obj, dict):
+                            if "_usage" in obj:
+                                exact_input_tokens  = obj["_usage"].get("i", 0)
+                                exact_output_tokens = obj["_usage"].get("o", 0)
+                                yield chunk
+                                continue
+                            if obj.get("t"):
+                                buffer_text += obj["t"]
+                                await flush(False)
+                            if obj.get("done"):
+                                await flush(True)
+                                try:
+                                    async with SessionLocal() as session:
+                                        session.add(UsageLog(
+                                            user_id=user_id,
+                                            chat_id=chat_id,
+                                            model=model,
+                                            provider=provider,
+                                            input_tokens=exact_input_tokens,
+                                            output_tokens=exact_output_tokens,
+                                        ))
+                                        await session.commit()
+                                    print(f"[usage] ✓ user={user_id} model={model} in={exact_input_tokens} out={exact_output_tokens}")
+                                except Exception as log_err:
+                                    print(f"[usage] ⚠️ failed to record usage: {log_err}")
+                                yield chunk
+                                return
+                    yield chunk
+                await flush(True)
+                yield sse({"done": True})
+                return  # ← important, don't fall through to executor
+
             def sync_iter():
                 if provider in ("openai", "openrouter", "groq", "nebius"):
                     yield from openai_stream(provider, model_name, llm_req, images=images, is_premium=is_premium)
                     return
-                if provider == "anthropic":
-                    yield from anthropic_stream(model_name, llm_req, images=images, is_premium=is_premium)
-                    return
-                if provider == "gemini":
-                    yield from gemini_stream(model_name, llm_req, images=images, is_premium=is_premium)
-                    return
+                # if provider == "anthropic":
+                #     yield from anthropic_stream(model_name, llm_req, images=images, is_premium=is_premium)
+                #     return
+                # if provider == "gemini":
+                #     yield from gemini_stream(model_name, llm_req, images=images, is_premium=is_premium)
+                #     return
                 raise RuntimeError(f"Unknown provider: {provider}")
 
             it = iter(sync_iter())
