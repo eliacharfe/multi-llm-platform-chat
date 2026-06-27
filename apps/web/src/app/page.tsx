@@ -112,6 +112,9 @@ export default function Page() {
   // const [isPremium, setIsPremium] = useState(true); // uncomment when wants isPremium = true
   const [deepSearch, setDeepSearch] = useState(false);
 
+  const [deferredInstallPrompt, setDeferredInstallPrompt] = useState<any>(null);
+  const [isAppInstalled, setIsAppInstalled] = useState(false);
+
   async function fetchMe(user: User) {
     try {
       // Check Firebase claims first (works even before DB is synced)
@@ -156,6 +159,34 @@ export default function Page() {
     if (!authReady) return;
     fetch(`${apiUrl}/health`, { cache: "no-store" }).catch(() => { });
   }, [authReady, apiUrl]);
+
+  useEffect(() => {
+    const handler = (e: any) => {
+      e.preventDefault();
+      setDeferredInstallPrompt(e);
+    };
+
+    const installedHandler = () => {
+      setIsAppInstalled(true);
+      localStorage.setItem("pwa-installed", "true");
+      setDeferredInstallPrompt(null);
+    };
+
+    const isStandalone =
+      window.matchMedia("(display-mode: standalone)").matches ||
+      (window.navigator as any).standalone === true;
+
+    if (isStandalone || localStorage.getItem("pwa-installed") === "true") {
+      setIsAppInstalled(true);
+    }
+
+    window.addEventListener("beforeinstallprompt", handler);
+    window.addEventListener("appinstalled", installedHandler);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+      window.removeEventListener("appinstalled", installedHandler);
+    };
+  }, []);
 
   function setModelAsAuto(nextModel: string) {
     const p = getProvider(nextModel);
@@ -959,38 +990,58 @@ export default function Page() {
                 />
               </div>
 
-              {isPremium ? (
-                <div className="hidden sm:flex items-center gap-3">
-                  <span className={[
-                    "flex items-center gap-1.5",
-                    "rounded-full px-4 py-2 text-sm font-semibold",
-                    "bg-teal-500/20 border border-teal-400/30 text-teal-300",
-                  ].join(" ")}>
-                    ⚡ Premium
-                  </span>
-                  {/* <a
-                    href="/premium/cancel"
-                    className="text-xs text-gray-400 hover:text-red-400 transition underline underline-offset-2"
+              <div className="flex items-center gap-2">
+                {/* Install button — shown when prompt is available and not yet installed */}
+                {!isAppInstalled && (
+                  <button
+                    type="button"
+                    title="Install app"
+                    onClick={async () => {
+                      if (!deferredInstallPrompt) return;
+                      await deferredInstallPrompt.prompt();
+                      const choice = await deferredInstallPrompt.userChoice;
+                      if (choice.outcome === "accepted") {
+                        setIsAppInstalled(true);
+                        setDeferredInstallPrompt(null);
+                      }
+                    }}
+                    className="flex items-center justify-center rounded-full w-9 h-9 border border-white/10 bg-white/5 text-white/60 hover:text-white hover:bg-white/10 transition"
                   >
-                    Cancel subscription
-                  </a> */}
-                </div>
-              ) : isAuthed ? (
-                <button
-                  type="button"
-                  onClick={() => router.push("/premium")}
-                  className={[
-                    "hidden sm:block",
-                    "rounded-full px-4 py-2 text-sm font-semibold",
-                    "bg-linear-to-r from-yellow-300 to-amber-500",
-                    "text-black shadow-sm",
-                    "transition hover:scale-[1.03] hover:shadow-md",
-                    "active:scale-[0.98]",
-                  ].join(" ")}
-                >
-                  Go Premium
-                </button>
-              ) : null}
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                  </button>
+                )}
+
+                {isPremium ? (
+                  <div className="hidden sm:flex items-center gap-3">
+                    <span className={[
+                      "flex items-center gap-1.5",
+                      "rounded-full px-4 py-2 text-sm font-semibold",
+                      "bg-teal-500/20 border border-teal-400/30 text-teal-300",
+                    ].join(" ")}>
+                      ⚡ Premium
+                    </span>
+                  </div>
+                ) : isAuthed ? (
+                  <button
+                    type="button"
+                    onClick={() => router.push("/premium")}
+                    className={[
+                      "hidden sm:block",
+                      "rounded-full px-4 py-2 text-sm font-semibold",
+                      "bg-linear-to-r from-yellow-300 to-amber-500",
+                      "text-black shadow-sm",
+                      "transition hover:scale-[1.03] hover:shadow-md",
+                      "active:scale-[0.98]",
+                    ].join(" ")}
+                  >
+                    Go Premium
+                  </button>
+                ) : null}
+              </div>
             </div>
             {/* chat scroller */}
             <div

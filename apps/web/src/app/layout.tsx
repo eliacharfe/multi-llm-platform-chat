@@ -22,8 +22,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: {
-    default: "Multi-LLM Platform",
-    template: "%s | Multi-LLM Platform",
+    default: "MultiLLM",
+    template: "%s | MultiLLM",
   },
   description:
     "A powerful multi-provider AI chat platform. Chat with OpenAI, Claude, Gemini, Groq, DeepSeek and more — in one unified streaming interface.",
