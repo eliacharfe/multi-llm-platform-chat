@@ -34,6 +34,7 @@ from fastapi import Request
 import httpx
 from polar_billing import router as billing_router
 from user_service import check_and_increment_usage, get_or_create_user, PREMIUM_MODELS
+from routers.voice import router as voice_router
 
 from db import SessionLocal, init_db, Chat as ChatRow, UsageLog, Message as MessageRow, utcnow
 
@@ -43,9 +44,9 @@ print("OPENAI_FILE =", getattr(openai, "__file__", "unknown"))
 
 from clients import (
     get_openai_compatible_client,
-    get_anthropic_client,
+    # get_anthropic_client,
     get_async_anthropic_client,
-    get_gemini_client,
+    # get_gemini_client,
     get_async_gemini_client,
     openrouter_extra_headers,
 )
@@ -53,6 +54,7 @@ from clients import (
 app = FastAPI()
 
 app.include_router(billing_router)
+app.include_router(voice_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -71,7 +73,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from db import SessionLocal  # adjust if your sessionmaker is named differently
+from db import SessionLocal 
 
 @app.get("/v1/warm-db")
 async def warm_db():
@@ -1455,44 +1457,35 @@ async def chat_stream_with_files(
     # Stream + flush into DB
     # -------------------------------------------------------------------------
     async def gen():
-        buffer_text = ""
-        last_flush = time.monotonic()
-        FLUSH_INTERVAL_SEC = 0.05 
-        FLUSH_MIN_CHARS = 1
+        buffer_text = ""        
         exact_input_tokens = 0
         exact_output_tokens = 0
+        last_db_flush = time.monotonic()
+        DB_FLUSH_INTERVAL = 1.0   
 
-        async def flush(force: bool = False):
-            nonlocal buffer_text, last_flush
+        async def db_flush(force: bool = False):
+            nonlocal buffer_text, last_db_flush
             if not buffer_text:
                 return
-            if not force:
-                if (
-                    (time.monotonic() - last_flush) < FLUSH_INTERVAL_SEC
-                    and len(buffer_text) < FLUSH_MIN_CHARS
-                ):
-                    return
+            now = time.monotonic()
+            if not force and (now - last_db_flush) < DB_FLUSH_INTERVAL:
+                return
 
             chunk = buffer_text
             buffer_text = ""
-            last_flush = time.monotonic()
+            last_db_flush = now
 
             async with SessionLocal() as session:
                 msg = (await session.execute(
                     select(MessageRow).where(MessageRow.id == assistant_id)
                 )).scalars().first()
-
                 if msg:
                     msg.content = (msg.content or "") + chunk
-                else:
-                    print(f"[flush] ⚠️ assistant row {assistant_id} not found in DB!")
-
                 chat2 = (await session.execute(
                     select(ChatRow).where(ChatRow.id == chat_id)
                 )).scalars().first()
                 if chat2:
                     chat2.updated_at = utcnow()
-
                 await session.commit()
 
         try:
@@ -1565,7 +1558,6 @@ async def chat_stream_with_files(
                     else gemini_stream_async(model_name, llm_req, images=images, is_premium=is_premium)
                 )
                 async for chunk in stream_fn:
-                # async for chunk in anthropic_stream_async(model_name, llm_req, images=images, is_premium=is_premium):
                     if chunk.startswith("data: "):
                         payload = chunk[6:].strip()
                         try:
@@ -1581,9 +1573,11 @@ async def chat_stream_with_files(
                                 continue
                             if obj.get("t"):
                                 buffer_text += obj["t"]
-                                await flush(False)
+                                yield chunk            
+                                await db_flush(False)  
+                                continue    
                             if obj.get("done"):
-                                await flush(True)
+                                await db_flush(True)
                                 try:
                                     async with SessionLocal() as session:
                                         session.add(UsageLog(
@@ -1601,20 +1595,14 @@ async def chat_stream_with_files(
                                 yield chunk
                                 return
                     yield chunk
-                await flush(True)
+                await db_flush(True)
                 yield sse({"done": True})
-                return  # ← important, don't fall through to executor
+                return  
 
             def sync_iter():
                 if provider in ("openai", "openrouter", "groq", "nebius"):
                     yield from openai_stream(provider, model_name, llm_req, images=images, is_premium=is_premium)
                     return
-                # if provider == "anthropic":
-                #     yield from anthropic_stream(model_name, llm_req, images=images, is_premium=is_premium)
-                #     return
-                # if provider == "gemini":
-                #     yield from gemini_stream(model_name, llm_req, images=images, is_premium=is_premium)
-                #     return
                 raise RuntimeError(f"Unknown provider: {provider}")
 
             it = iter(sync_iter())
@@ -1642,10 +1630,10 @@ async def chat_stream_with_files(
 
                         if obj.get("t"):
                             buffer_text += obj["t"]
-                            await flush(False)
+                            await db_flush(False)
 
                         if obj.get("done"):
-                            await flush(True)
+                            await db_flush(True)
 
                             # ── Write usage log ────────────────────────────────
                             try:
@@ -1669,12 +1657,12 @@ async def chat_stream_with_files(
 
                 yield chunk  
 
-            await flush(True)
+            await db_flush(True)
             yield sse({"done": True})
 
         except Exception as e:
             try:
-                await flush(True)
+                await db_flush(True)
             except Exception:
                 pass
 
