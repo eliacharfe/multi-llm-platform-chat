@@ -85,7 +85,10 @@ export default function ModelDropdown({
                         "disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:border-transparent",
                     ].join(" ")}
                 >
-                    <span className="truncate max-w-[260px] sm:max-w-[320px]">{selectedLabel}</span>
+                    <span className="truncate max-w-[260px] sm:max-w-[320px]">
+                        <span className="sm:hidden">{selectedLabel.split(" ")[0]}</span>
+                        <span className="hidden sm:inline">{selectedLabel}</span>
+                    </span>
 
                     <svg
                         viewBox="0 0 24 24"
