@@ -562,8 +562,76 @@ const Composer = forwardRef<ComposerHandle, {
                                     )}
                                 </div>
 
-                                {/* Voice record button */}
+                                {/* Voice record button — hold on mobile, click-toggle on desktop */}
                                 <Tooltip
+                                    text={isTranscribing ? "Transcribing…" : isRecording ? "Stop recording" : "Voice input"}
+                                    side="bottom"
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={(e) => {
+                                            if (window.matchMedia("(hover: hover)").matches) {
+                                                toggleRecording();
+                                            }
+                                        }}
+
+                                        onPointerDown={(e) => {
+                                            if (!window.matchMedia("(hover: hover)").matches) {
+                                                e.preventDefault();
+                                                if (!isRecording && !isTranscribing && !isStreaming) {
+                                                    finalTranscriptRef.current = input.trim();
+                                                    start();
+                                                }
+                                            }
+                                        }}
+                                        onPointerUp={(e) => {
+                                            if (!window.matchMedia("(hover: hover)").matches) {
+                                                if (isRecording) stop();
+                                            }
+                                        }}
+                                        onPointerLeave={(e) => {
+                                            // If finger slides off button, still stop recording
+                                            if (!window.matchMedia("(hover: hover)").matches) {
+                                                if (isRecording) stop();
+                                            }
+                                        }}
+                                        disabled={isStreaming || isTranscribing}
+                                        aria-label={isRecording ? "Stop recording" : "Hold to record"}
+                                        className={[
+                                            "relative h-10 w-10 rounded-full flex items-center justify-center transition disabled:opacity-40",
+                                            isTranscribing
+                                                ? "bg-teal-500/20 text-teal-400"
+                                                : isRecording
+                                                    ? "bg-red-500/20 text-red-400"
+                                                    : "text-white/60 hover:text-white hover:bg-white/8",
+                                        ].join(" ")}
+                                    >
+                                        {(isRecording || isTranscribing) && (
+                                            <span className={[
+                                                "absolute inset-0 rounded-full animate-ping pointer-events-none",
+                                                isTranscribing ? "bg-teal-500/30" : "bg-red-500/30",
+                                            ].join(" ")} />
+                                        )}
+                                        {isTranscribing ? (
+                                            <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="2" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4l3-3-3-3v4a8 8 0 00-8 8h4z" />
+                                            </svg>
+                                        ) : isRecording ? (
+                                            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="currentColor" aria-hidden="true">
+                                                <rect x="7" y="7" width="10" height="10" rx="2" />
+                                            </svg>
+                                        ) : (
+                                            <svg viewBox="0 0 24 24" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                                <rect x="9" y="2" width="6" height="12" rx="3" />
+                                                <path d="M5 10a7 7 0 0 0 14 0" />
+                                                <line x1="12" y1="19" x2="12" y2="22" />
+                                                <line x1="9" y1="22" x2="15" y2="22" />
+                                            </svg>
+                                        )}
+                                    </button>
+                                </Tooltip>
+                                {/* <Tooltip
                                     text={isTranscribing ? "Transcribing…" : isRecording ? "Stop recording" : "Voice input"}
                                     side="bottom"
                                 >
@@ -605,7 +673,7 @@ const Composer = forwardRef<ComposerHandle, {
                                             </svg>
                                         )}
                                     </button>
-                                </Tooltip>
+                                </Tooltip> */}
 
                                 {/* Send / Stop button */}
                                 <button
